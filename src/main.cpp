@@ -40,15 +40,22 @@ int main(int argc, char **argv)
 	
 	// blah blah
 	player->setSampleRate(have.freq);
+	player->loadPatches("./GENMIDI.op2");
 	
 	SDL_PauseAudio(0);
-	for (uint8_t note = 25; note < 65; note++)
+	for (uint8_t patch = 0; patch < 128; patch++)
 	{
-		printf("midi note %u\n", note);
-		player->midiNoteOn(0, note, 127);
-		SDL_Delay(400);
-		player->midiNoteOff(0, note);
-		SDL_Delay(100);
+		printf("midi patch %u: %s\n", patch, player->patchName(patch).c_str());
+		player->midiProgramChange(0, patch);
+	
+		for (uint8_t note = 25; note < 65; note += 6)
+		{
+			printf("midi note %u\n", note);
+			player->midiNoteOn(0, note, 127);
+			SDL_Delay(400);
+			player->midiNoteOff(0, note);
+			SDL_Delay(100);
+		}
 	}
 	SDL_Delay(2000);
 	
