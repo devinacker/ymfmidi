@@ -27,6 +27,7 @@ struct OPLVoice
 	uint16_t op = 0; // base operator number, set based on voice num.
 	
 	bool on = false;
+	bool justOff = false; // true after note off, false after generating at least 1 sample
 	uint8_t note = 0;
 	uint8_t velocity = 0;
 	
@@ -89,7 +90,7 @@ private:
 	// find a voice with the oldest note
 	OPLVoice* findVoice();
 	// find a voice that's playing a specific note on a specific channel
-	OPLVoice* findVoice(uint8_t channel, uint8_t note);
+	OPLVoice* findVoice(uint8_t channel, uint8_t note, bool on);
 
 	// update a property of all currently playing voices on a MIDI channel
 	void updateChannelVoices(uint8_t channel, void(OPLPlayer::*func)(OPLVoice&));

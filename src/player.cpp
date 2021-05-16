@@ -68,9 +68,10 @@ void OPLPlayer::generate(float *data, unsigned numSamples)
 		{	
 			// time to update midi playback
 			m_samplesLeft = m_sequence->update(*this);
-			for (int i = 0; i < 18; i++)
+			for (auto& voice : m_voices)
 			{
-				m_voices[i].duration++;
+				voice.duration++;
+				voice.justOff = false;
 			}
 		}
 	
@@ -151,51 +152,53 @@ void OPLPlayer::write(uint16_t addr, uint8_t data)
 // ----------------------------------------------------------------------------
 OPLVoice* OPLPlayer::findVoice()
 {
-	OPLVoice *voice = nullptr;
+	OPLVoice *found = nullptr;
 	uint32_t duration = 0;
 	
 	// try to find the "oldest" voice, prioritizing released notes
 	// (or voices that haven't ever been used yet)
-	for (int i = 0; i < 18; i++)
+	for (auto& voice : m_voices)
 	{
-		if (!m_voices[i].channel)
-			return &m_voices[i];
+		if (!voice.channel)
+			return &voice;
 	
-		if (!m_voices[i].on && m_voices[i].duration > duration)
+		if (!voice.on && !voice.justOff
+			&& voice.duration > duration)
 		{
-			voice = &m_voices[i];
-			duration = m_voices[i].duration;
+			found = &voice;
+			duration = voice.duration;
 		}
 	}
 	
-	if (voice) return voice;
+	if (found) return found;
 	// if we didn't find one yet, just try to find an old one
 	// even if it should still be playing.
-	voice = m_voices;
+	// if that somehow still fails, just use the first voice
+	found = m_voices;
 	
-	for (int i = 0; i < 18; i++)
+	for (auto& voice : m_voices)
 	{
-		if (m_voices[i].duration > duration)
+		if (voice.duration > duration)
 		{
-			voice = &m_voices[i];
-			duration = m_voices[i].duration;
+			found = &voice;
+			duration = voice.duration;
 		}
 	}
 	
-	return voice;
+	return found;
 }
 
 // ----------------------------------------------------------------------------
-OPLVoice* OPLPlayer::findVoice(uint8_t channel, uint8_t note)
+OPLVoice* OPLPlayer::findVoice(uint8_t channel, uint8_t note, bool on)
 {
 	channel &= 15;
-	for (int i = 0; i < 18; i++)
+	for (auto& voice : m_voices)
 	{
-		if (m_voices[i].channel == &m_channels[channel]
-		    && m_voices[i].note == note)
+		if (voice.on == on && !voice.justOff
+			&& voice.channel == &m_channels[channel]
+			&& voice.note == note)
 		{
-		//	printf("findVoice: %u\n", i);
-			return &m_voices[i];
+			return &voice;
 		}
 	}
 	
@@ -326,11 +329,11 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 	velocity &= 0x7f;
 
 //	printf("midiNoteOn: chn %u, note %u\n", channel, note);
-	OPLVoice *voice = findVoice(channel, note);
+	OPLVoice *voice = findVoice(channel, note, false);
 	if (!voice) voice = findVoice();
 	if (!voice) return; // ??
 	
-	write(REG_VOICE_FREQH + voice->num, 0);
+//	write(REG_VOICE_FREQH + voice->num, 0);
 
 	// update the note parameters for this voice
 	voice->channel = &m_channels[channel & 15];
@@ -351,12 +354,14 @@ void OPLPlayer::midiNoteOff(uint8_t channel, uint8_t note)
 	note &= 0x7f;
 	
 //	printf("midiNoteOff: chn %u, note %u\n", channel, note);
-	OPLVoice *voice = findVoice(channel, note);
-	if (!voice) return;
-	
-	voice->on = false;
-	
-	write(REG_VOICE_FREQH + voice->num, voice->freq >> 8);
+	OPLVoice *voice;
+	while ((voice = findVoice(channel, note, true)) != nullptr)
+	{
+		voice->justOff = voice->on;
+		voice->on = false;
+
+		write(REG_VOICE_FREQH + voice->num, voice->freq >> 8);
+	}
 }
 
 // ----------------------------------------------------------------------------
