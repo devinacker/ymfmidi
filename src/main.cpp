@@ -7,6 +7,11 @@ extern "C" {
 
 #include "player.h"
 
+static void cls()
+{
+	printf("\x1b[2J");
+}
+
 static void audioCallback(void *data, uint8_t *stream, int len)
 {
 	memset(stream, 0, len);
@@ -22,6 +27,31 @@ int main(int argc, char **argv)
 	SDL_SetMainReady();
 	
 	auto player = new OPLPlayer;
+	
+	if (argc < 2)
+	{
+		printf("usage: %s path_to_song [path_to_patches]\n", argv[0]);
+		printf("supported song formats:  MUS\n");
+		printf("supported patch formats: OP2\n");
+		
+		exit(0);
+	}
+	
+	if (!player->loadSequence(argv[1]))
+	{
+		printf("couldn't load %s\n", argv[1]);
+		exit(1);
+	}
+	
+	const char* patchPath = "./GENMIDI.op2";
+	if (argc >= 3)
+		patchPath = argv[2];
+	
+	if (!player->loadPatches(patchPath))
+	{
+		printf("couldn't load %s\n", patchPath);
+		exit(1);
+	}
 	
 	// init SDL audio now
 	SDL_Init(SDL_INIT_AUDIO);
@@ -40,25 +70,17 @@ int main(int argc, char **argv)
 	
 	// blah blah
 	player->setSampleRate(have.freq);
-	player->loadPatches("./GENMIDI.op2");
-	
 	SDL_PauseAudio(0);
-	for (uint8_t patch = 0; patch < 128; patch++)
+	
+	cls();
+	
+	while(1)
 	{
-		printf("midi patch %u: %s\n", patch, player->patchName(patch).c_str());
-		player->midiProgramChange(0, patch);
-	
-		for (uint8_t note = 25; note < 65; note += 6)
-		{
-			printf("midi note %u\n", note);
-			player->midiNoteOn(0, note, 127);
-			SDL_Delay(400);
-			player->midiNoteOff(0, note);
-			SDL_Delay(100);
-		}
+		player->display();
+		SDL_Delay(50);
 	}
-	SDL_Delay(2000);
-	
+
+	cls();
 	SDL_Quit();
 	delete player;
 	

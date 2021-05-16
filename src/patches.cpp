@@ -3,6 +3,7 @@
 
 #include "patches.h"
 
+// ----------------------------------------------------------------------------
 bool OPLPatch::load(const char *path, OPLPatch (&patches)[256])
 {
 	FILE *file = fopen(path, "rb");

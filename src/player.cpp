@@ -1,4 +1,5 @@
 #include "player.h"
+#include "sequence.h"
 
 static const unsigned voice_num[18] = {
 	0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8,
@@ -15,9 +16,12 @@ OPLPlayer::OPLPlayer()
 	: ymfm::ymfm_interface()
 {
 	m_opl3 = new ymfm::ymf262(*this);
+	m_sequence = nullptr;
 	
-	m_sample_step = 1.0;
-	m_sample_pos = 0.0;
+	m_sampleRate = 44100;
+	m_sampleStep = 1.0;
+	m_samplePos = 0.0;
+	m_samplesLeft = 0;
 		
 	reset();
 }
@@ -26,15 +30,25 @@ OPLPlayer::OPLPlayer()
 OPLPlayer::~OPLPlayer()
 {
 	delete m_opl3;
+	delete m_sequence;
 }
 
 // ----------------------------------------------------------------------------
 void OPLPlayer::setSampleRate(uint32_t rate)
 {
 	uint32_t rateOPL = m_opl3->sample_rate(masterClock);
-	m_sample_step = (double)rate / rateOPL;
+	m_sampleStep = (double)rate / rateOPL;
 	
-	printf("OPL sample rate = %u / output sample rate = %u / step %02f\n", rateOPL, rate, m_sample_step);
+	printf("OPL sample rate = %u / output sample rate = %u / step %02f\n", rateOPL, rate, m_sampleStep);
+}
+
+// ----------------------------------------------------------------------------
+bool OPLPlayer::loadSequence(const char* path)
+{
+	delete m_sequence;
+	m_sequence = Sequence::load(path);
+	
+	return m_sequence != nullptr;
 }
 
 // ----------------------------------------------------------------------------
@@ -50,22 +64,49 @@ void OPLPlayer::generate(float *data, unsigned numSamples)
 
 	while (numSamples)
 	{
-		for (; m_sample_pos < 1.0; m_sample_pos += m_sample_step)
+		while (!m_samplesLeft && m_sequence)
+		{	
+			// time to update midi playback
+			m_samplesLeft = m_sequence->update(*this);
+			for (int i = 0; i < 18; i++)
+			{
+				m_voices[i].duration++;
+			}
+		}
+	
+		for (; m_samplePos < 1.0; m_samplePos += m_sampleStep)
 			m_opl3->generate(&output);
 		
-		// TODO: update MIDI playback here if needed
-		// just update voice duration for now
-		for (int i = 0; i < 18; i++)
-		{
-			if (m_voices[i].duration < UINT_MAX)
-				m_voices[i].duration++;
-		}
+		const double gain = 1.2;
 		
-		*data++ = output.data[0] / 32768.0;
-		*data++ = output.data[1] / 32768.0;
+		*data++ = output.data[0] / (32768.0 / gain);
+		*data++ = output.data[1] / (32768.0 / gain);
 		
 		numSamples--;
-		m_sample_pos -= 1.0;
+		m_samplePos -= 1.0;
+		m_samplesLeft--;
+	}
+}
+
+// ----------------------------------------------------------------------------
+void OPLPlayer::display()
+{
+//	printf("\x1b[2J");
+	printf("\x1b[H");
+	for (int i = 0; i < 18; i++)
+	{
+		printf("voice %-2u: ", i + 1);
+		if (m_voices[i].channel)
+		{
+			printf("channel %-2u, note %-3u %c %32s\n",
+				m_voices[i].channel->num + 1, m_voices[i].note,
+				m_voices[i].on ? '*' : ' ',
+				m_voices[i].patch ? m_voices[i].patch->name.c_str() : "");
+		}
+		else
+		{
+			printf("%70s\n", "");
+		}
 	}
 }
 
@@ -82,13 +123,19 @@ void OPLPlayer::reset()
 	for (int i = 0; i < 16; i++)
 	{
 		m_channels[i] = MIDIChannel();
+		m_channels[i].num = i;
 	}
 	for (int i = 0; i < 18; i++)
 	{
 		m_voices[i] = OPLVoice();
+	//	m_voices[i].channel = m_channels;
 		m_voices[i].num = voice_num[i];
 		m_voices[i].op = oper_num[i];
 	}
+	
+	if (m_sequence)
+		m_sequence->reset();
+	m_samplesLeft = 0;
 }
 
 // ----------------------------------------------------------------------------
@@ -104,21 +151,37 @@ void OPLPlayer::write(uint16_t addr, uint8_t data)
 // ----------------------------------------------------------------------------
 OPLVoice* OPLPlayer::findVoice()
 {
-	OPLVoice *voice = m_voices;
+	OPLVoice *voice = nullptr;
 	uint32_t duration = 0;
-	int n = 0;
 	
+	// try to find the "oldest" voice, prioritizing released notes
+	// (or voices that haven't ever been used yet)
 	for (int i = 0; i < 18; i++)
 	{
-		if (m_voices[i].duration > duration)
+		if (!m_voices[i].channel)
+			return &m_voices[i];
+	
+		if (!m_voices[i].on && m_voices[i].duration > duration)
 		{
-			n = i;
 			voice = &m_voices[i];
 			duration = m_voices[i].duration;
 		}
 	}
 	
-//	printf("findVoice: %u\n", n);
+	if (voice) return voice;
+	// if we didn't find one yet, just try to find an old one
+	// even if it should still be playing.
+	voice = m_voices;
+	
+	for (int i = 0; i < 18; i++)
+	{
+		if (m_voices[i].duration > duration)
+		{
+			voice = &m_voices[i];
+			duration = m_voices[i].duration;
+		}
+	}
+	
 	return voice;
 }
 
@@ -158,7 +221,6 @@ void OPLPlayer::updatePatch(OPLVoice& voice)
 	if (voice.channel == &m_channels[9])
 	{
 		newPatch = &m_patches[128 | voice.note];
-		voice.note = newPatch->fixedNote;
 	}
 	else if (voice.channel != nullptr)
 	{
@@ -170,6 +232,7 @@ void OPLPlayer::updatePatch(OPLVoice& voice)
 	
 	if (voice.patchVoice != &patchVoice)
 	{
+		voice.patch = newPatch;
 		voice.patchVoice = &patchVoice;
 		
 		// 0x20: vibrato, sustain, multiplier
@@ -184,16 +247,22 @@ void OPLPlayer::updatePatch(OPLVoice& voice)
 		// 0xe0: waveform
 		write(REG_OP_WAVEFORM + voice.op,     patchVoice.op_wave[0]);
 		write(REG_OP_WAVEFORM + voice.op + 3, patchVoice.op_wave[1]);
-		
-		voice.tune = patchVoice.tune;
-		voice.finetune = patchVoice.finetune;
 	}
 }
 
 // ----------------------------------------------------------------------------
 void OPLPlayer::updateVolume(OPLVoice& voice)
 {
-	double scale = (voice.velocity * voice.channel->volume) / 16384.0;
+	// shamelessly stolen from Nuke.YKT
+	static const uint8_t opl_volume_map[32] =
+	{
+		80, 63, 40, 36, 32, 28, 23, 21,
+		19, 17, 15, 14, 13, 12, 11, 10,
+		 9,  8,  7,  6,  5,  5,  4,  4,
+		 3,  3,  2,  2,  1,  1,  0,  0
+	};
+
+	uint8_t atten = opl_volume_map[(voice.velocity * voice.channel->volume) >> 9];
 	uint8_t level;
 	
 	auto patchVoice = voice.patchVoice;
@@ -201,11 +270,11 @@ void OPLPlayer::updateVolume(OPLVoice& voice)
 	// 0x40: key scale / volume
 	if (!(patchVoice->conn & 1))
 	{
-		level = (uint8_t)((patchVoice->op_level[0] ^ 0x3f) * scale) ^ 0x3f;
+		level = std::min(0x3f, patchVoice->op_level[0] + atten);
 		write(REG_OP_LEVEL + voice.op, level | patchVoice->op_ksr[0]);
 	}
 		
-	level = (uint8_t)((patchVoice->op_level[1] ^ 0x3f) * scale) ^ 0x3f;
+	level = std::min(0x3f, patchVoice->op_level[1] + atten);
 	write(REG_OP_LEVEL + voice.op + 3, level | patchVoice->op_ksr[1]);
 }
 
@@ -230,7 +299,10 @@ void OPLPlayer::updateFrequency(OPLVoice& voice)
 	};
 	static const uint16_t noteBendRange = noteFreq[0] / 6; // ~2 semitones
 	
-	uint8_t note = voice.note + voice.tune;
+	if (!voice.patch || !voice.channel) return;
+	
+	uint8_t note = ((voice.channel->num != 9) ? voice.note : voice.patch->fixedNote);
+	note += voice.patchVoice->tune;
 	uint8_t octave = (note / 12) & 7;
 	note %= 12;
 	
@@ -258,7 +330,7 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 	if (!voice) voice = findVoice();
 	if (!voice) return; // ??
 	
-	write(REG_VOICE_FREQH + voice->num, voice->freq >> 8);
+	write(REG_VOICE_FREQH + voice->num, 0);
 
 	// update the note parameters for this voice
 	voice->channel = &m_channels[channel & 15];
@@ -271,13 +343,6 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 	updateVolume(*voice);
 	updatePanning(*voice);
 	updateFrequency(*voice);
-}
-
-// ----------------------------------------------------------------------------
-void OPLPlayer::midiPitchControl(uint8_t channel, double pitch)
-{
-	m_channels[channel & 15].pitch = pitch;
-	updateChannelVoices(channel, updateFrequency);
 }
 
 // ----------------------------------------------------------------------------
@@ -295,6 +360,14 @@ void OPLPlayer::midiNoteOff(uint8_t channel, uint8_t note)
 }
 
 // ----------------------------------------------------------------------------
+void OPLPlayer::midiPitchControl(uint8_t channel, double pitch)
+{
+//	printf("midiPitchControl: chn %u, val %.02f\n", channel, pitch);
+	m_channels[channel & 15].pitch = pitch;
+	updateChannelVoices(channel, updateFrequency);
+}
+
+// ----------------------------------------------------------------------------
 void OPLPlayer::midiProgramChange(uint8_t channel, uint8_t patchNum)
 {
 	m_channels[channel & 15].patchNum = patchNum & 0x7f;
@@ -308,6 +381,7 @@ void OPLPlayer::midiControlChange(uint8_t channel, uint8_t control, uint8_t valu
 	control &= 0x7f;
 	value   &= 0x7f;
 	
+//	printf("midiControlChange: chn %u, ctrl %u, val %u\n", channel, control, value);
 	switch (control)
 	{
 	case 7:
