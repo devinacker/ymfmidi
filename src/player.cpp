@@ -71,7 +71,7 @@ void OPLPlayer::generate(float *data, unsigned numSamples)
 			for (auto& voice : m_voices)
 			{
 				voice.duration++;
-				voice.justOff = false;
+				voice.justChanged = false;
 			}
 		}
 	
@@ -99,7 +99,7 @@ void OPLPlayer::display()
 		printf("voice %-2u: ", i + 1);
 		if (m_voices[i].channel)
 		{
-			printf("channel %-2u, note %-3u %c %32s\n",
+			printf("channel %-2u, note %-3u %c %-32s\n",
 				m_voices[i].channel->num + 1, m_voices[i].note,
 				m_voices[i].on ? '*' : ' ',
 				m_voices[i].patch ? m_voices[i].patch->name.c_str() : "");
@@ -162,7 +162,7 @@ OPLVoice* OPLPlayer::findVoice()
 		if (!voice.channel)
 			return &voice;
 	
-		if (!voice.on && !voice.justOff
+		if (!voice.on && !voice.justChanged
 			&& voice.duration > duration)
 		{
 			found = &voice;
@@ -194,7 +194,7 @@ OPLVoice* OPLPlayer::findVoice(uint8_t channel, uint8_t note, bool on)
 	channel &= 15;
 	for (auto& voice : m_voices)
 	{
-		if (voice.on == on && !voice.justOff
+		if (voice.on == on && !voice.justChanged
 			&& voice.channel == &m_channels[channel]
 			&& voice.note == note)
 		{
@@ -256,7 +256,7 @@ void OPLPlayer::updatePatch(OPLVoice& voice)
 // ----------------------------------------------------------------------------
 void OPLPlayer::updateVolume(OPLVoice& voice)
 {
-	// shamelessly stolen from Nuke.YKT
+	// lookup table shamelessly stolen from Nuke.YKT
 	static const uint8_t opl_volume_map[32] =
 	{
 		80, 63, 40, 36, 32, 28, 23, 21,
@@ -271,11 +271,11 @@ void OPLPlayer::updateVolume(OPLVoice& voice)
 	auto patchVoice = voice.patchVoice;
 	
 	// 0x40: key scale / volume
-	if (!(patchVoice->conn & 1))
-	{
+	if (patchVoice->conn & 1)
 		level = std::min(0x3f, patchVoice->op_level[0] + atten);
-		write(REG_OP_LEVEL + voice.op, level | patchVoice->op_ksr[0]);
-	}
+	else
+		level = patchVoice->op_level[0];
+	write(REG_OP_LEVEL + voice.op,     level | patchVoice->op_ksr[0]);
 		
 	level = std::min(0x3f, patchVoice->op_level[1] + atten);
 	write(REG_OP_LEVEL + voice.op + 3, level | patchVoice->op_ksr[1]);
@@ -337,7 +337,7 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 
 	// update the note parameters for this voice
 	voice->channel = &m_channels[channel & 15];
-	voice->on = true;
+	voice->on = voice->justChanged = true;
 	voice->note = note;
 	voice->velocity = velocity;
 	voice->duration = 0;
@@ -357,7 +357,7 @@ void OPLPlayer::midiNoteOff(uint8_t channel, uint8_t note)
 	OPLVoice *voice;
 	while ((voice = findVoice(channel, note, true)) != nullptr)
 	{
-		voice->justOff = voice->on;
+		voice->justChanged = voice->on;
 		voice->on = false;
 
 		write(REG_VOICE_FREQH + voice->num, voice->freq >> 8);

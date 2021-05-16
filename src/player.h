@@ -27,7 +27,7 @@ struct OPLVoice
 	uint16_t op = 0; // base operator number, set based on voice num.
 	
 	bool on = false;
-	bool justOff = false; // true after note off, false after generating at least 1 sample
+	bool justChanged = false; // true after note on/off, false after generating at least 1 sample
 	uint8_t note = 0;
 	uint8_t velocity = 0;
 	
