@@ -41,7 +41,7 @@ struct OPLVoice
 class OPLPlayer : public ymfm::ymfm_interface
 {
 public:
-	static const unsigned masterClock = 14320000;
+	static const unsigned masterClock = 14318181;
 
 	enum {
 		REG_TEST        = 0x01,
@@ -92,11 +92,14 @@ private:
 	// find a voice that's playing a specific note on a specific channel
 	OPLVoice* findVoice(uint8_t channel, uint8_t note, bool on);
 
+	// find the patch to use for a specific MIDI channel and note
+	const OPLPatch* findPatch(uint8_t channel, uint8_t note) const;
+
 	// update a property of all currently playing voices on a MIDI channel
 	void updateChannelVoices(uint8_t channel, void(OPLPlayer::*func)(OPLVoice&));
 
 	// update the patch parameters for a voice
-	void updatePatch(OPLVoice& voice);
+	void updatePatch(OPLVoice& voice, const OPLPatch *newPatch, uint8_t numVoice = 0);
 
 	// update the volume level for a voice
 	void updateVolume(OPLVoice& voice);

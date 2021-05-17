@@ -41,9 +41,10 @@ bool OPLPatch::loadOP2(FILE *file, OPLPatch (&patches)[256])
 		
 		// read the common data for both 2op voices
 		// flag bit 0 is "fixed pitch" (for drums), but it's seemingly only used for drum patches anyway, so ignore it?
-		patch.dualTwoOp = (bytes[0] & 4);
-		// second voice detune (TODO: how does this actually work? is it just added to the F-number?)
-		patch.voice[1].finetune = ((int16_t)bytes[2] / 2) - 64;
+		patch.fourOp = patch.dualTwoOp = (bytes[0] & 4);
+		// second voice detune
+		patch.voice[1].finetune = (bytes[2] / 128.0) - 1.0;
+	
 		patch.fixedNote = bytes[3];
 		
 		// read data for both 2op voices

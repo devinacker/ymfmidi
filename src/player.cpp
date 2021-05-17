@@ -206,6 +206,19 @@ OPLVoice* OPLPlayer::findVoice(uint8_t channel, uint8_t note, bool on)
 }
 
 // ----------------------------------------------------------------------------
+const OPLPatch* OPLPlayer::findPatch(uint8_t channel, uint8_t note) const
+{
+	if (channel == 9)
+	{
+		return &m_patches[128 | note];
+	}
+	else
+	{
+		return &m_patches[m_channels[channel & 15].patchNum & 0x7f];
+	}
+}
+
+// ----------------------------------------------------------------------------
 void OPLPlayer::updateChannelVoices(uint8_t channel, void(OPLPlayer::*func)(OPLVoice&))
 {
 	for (auto& voice : m_voices)
@@ -216,22 +229,11 @@ void OPLPlayer::updateChannelVoices(uint8_t channel, void(OPLPlayer::*func)(OPLV
 }
 
 // ----------------------------------------------------------------------------
-void OPLPlayer::updatePatch(OPLVoice& voice)
+void OPLPlayer::updatePatch(OPLVoice& voice, const OPLPatch *newPatch, uint8_t numVoice)
 {	
 	// assign the MIDI channel's current patch (or the current drum patch) to this voice
-	OPLPatch *newPatch = m_patches;
-	
-	if (voice.channel == &m_channels[9])
-	{
-		newPatch = &m_patches[128 | voice.note];
-	}
-	else if (voice.channel != nullptr)
-	{
-		newPatch = &m_patches[voice.channel->patchNum & 0x7f];
-	}
-	
-	// TODO: select voice 0 or 1
-	PatchVoice& patchVoice = newPatch->voice[0];
+
+	const PatchVoice& patchVoice = newPatch->voice[numVoice];
 	
 	if (voice.patchVoice != &patchVoice)
 	{
@@ -298,9 +300,11 @@ void OPLPlayer::updatePanning(OPLVoice& voice)
 void OPLPlayer::updateFrequency(OPLVoice& voice)
 {
 	static const uint16_t noteFreq[12] = {
-		0x16b, 0x181, 0x198, 0x1b0, 0x1ca, 0x1e5, 0x202, 0x220, 0x241, 0x263, 0x287, 0x2ae
+		// calculated from A440
+		345, 365, 387, 410, 435, 460, 488, 517, 547, 580, 615, 651
 	};
-	static const uint16_t noteBendRange = noteFreq[0] / 6; // ~2 semitones
+	static const double noteBendUp   = 0.1224620;  // ~2 semitones
+	static const double noteBendDown = 0.1091013;
 	
 	if (!voice.patch || !voice.channel) return;
 	
@@ -309,7 +313,13 @@ void OPLPlayer::updateFrequency(OPLVoice& voice)
 	uint8_t octave = (note / 12) & 7;
 	note %= 12;
 	
-	voice.freq = noteFreq[note] + (voice.channel->pitch * noteBendRange) + (octave << 10);
+	voice.freq = noteFreq[note];
+	const double detune = (voice.channel->pitch + voice.patchVoice->finetune);
+	if (detune > 0)
+		voice.freq += voice.freq * noteBendUp * detune;
+	else if (detune < 0)
+		voice.freq += voice.freq * noteBendDown * detune;
+	voice.freq += (octave << 10);
 	
 //	printf("voice.freq: %u\n", voice.freq);
 	write(REG_VOICE_FREQL + voice.num, voice.freq & 0xff);
@@ -329,23 +339,30 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 	velocity &= 0x7f;
 
 //	printf("midiNoteOn: chn %u, note %u\n", channel, note);
-	OPLVoice *voice = findVoice(channel, note, false);
-	if (!voice) voice = findVoice();
-	if (!voice) return; // ??
+	const OPLPatch *newPatch = findPatch(channel, note);
+	if (!newPatch) return;
 	
-//	write(REG_VOICE_FREQH + voice->num, 0);
+	const int numVoices = (newPatch->fourOp ? 2 : 1);
 
-	// update the note parameters for this voice
-	voice->channel = &m_channels[channel & 15];
-	voice->on = voice->justChanged = true;
-	voice->note = note;
-	voice->velocity = velocity;
-	voice->duration = 0;
-	
-	updatePatch(*voice);
-	updateVolume(*voice);
-	updatePanning(*voice);
-	updateFrequency(*voice);
+	for (int i = 0; i < numVoices; i++)
+	{
+		OPLVoice *voice = findVoice(channel, note, false);
+		if (!voice) voice = findVoice();
+		if (!voice) continue; // ??
+		
+		// update the note parameters for this voice
+		voice->channel = &m_channels[channel & 15];
+		voice->on = voice->justChanged = true;
+		voice->note = note;
+		voice->velocity = velocity;
+		// set the second voice's duration to 1 so it can get dropped if we need it to
+		voice->duration = i;
+		
+		updatePatch(*voice, newPatch, i);
+		updateVolume(*voice);
+		updatePanning(*voice);
+		updateFrequency(*voice);
+	}
 }
 
 // ----------------------------------------------------------------------------

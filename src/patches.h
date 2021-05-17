@@ -15,7 +15,7 @@ struct PatchVoice
 	uint8_t op_wave[2] = {0};  // regs 0xE0+
 	
 	int8_t tune = 0; // MIDI note offset
-	int16_t finetune = 0;
+	double finetune = 0.0;
 };
 
 struct OPLPatch
