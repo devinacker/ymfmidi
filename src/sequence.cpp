@@ -1,6 +1,7 @@
 #include <cstdio>
 
 #include "sequence.h"
+#include "sequence_mid.h"
 #include "sequence_mus.h"
 
 // ----------------------------------------------------------------------------
@@ -16,6 +17,8 @@ Sequence* Sequence::load(const char *path)
 	
 	if (SequenceMUS::isValid(file))
 		seq = new SequenceMUS(file);
+	else if (SequenceMID::isValid(file))
+		seq = new SequenceMID(file);
 	
 	fclose(file);
 	return seq;

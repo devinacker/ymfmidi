@@ -92,7 +92,6 @@ void OPLPlayer::generate(float *data, unsigned numSamples)
 // ----------------------------------------------------------------------------
 void OPLPlayer::display()
 {
-//	printf("\x1b[2J");
 	printf("\x1b[H");
 	for (int i = 0; i < 18; i++)
 	{
