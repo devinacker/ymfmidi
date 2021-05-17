@@ -172,8 +172,6 @@ OPLVoice* OPLPlayer::findVoice()
 	if (found) return found;
 	// if we didn't find one yet, just try to find an old one
 	// even if it should still be playing.
-	// if that somehow still fails, just use the first voice
-	found = m_voices;
 	
 	for (auto& voice : m_voices)
 	{
