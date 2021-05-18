@@ -10,11 +10,9 @@
 #---------------------------------------------------------------------------------
 TARGET		:=	ymfm-test
 BUILD		:=	obj
-SOURCES		:=	./src ../ymfm/src
+SOURCES		:=	./src ./ymfm/src
 DATA		:=	data  
 INCLUDES	:=	$(SOURCES) include
-GRAPHICS    :=  ../graphics
-SOUNDS      :=  ../sound
 
 #---------------------------------------------------------------------------------
 # any extra libraries we wish to link with the project
@@ -45,8 +43,6 @@ ifneq ($(BUILD),$(notdir $(CURDIR)))
 export OUTPUT	:=	$(CURDIR)/$(TARGET)
  
 export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
-					$(foreach dir,$(GRAPHICS),$(CURDIR)/$(dir)) \
-					$(foreach dir,$(SOUNDS),$(CURDIR)/$(dir)) \
 					$(foreach dir,$(DATA),$(CURDIR)/$(dir))
 
 export DEPSDIR	:=	$(CURDIR)/$(BUILD)
@@ -55,9 +51,6 @@ CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
-PNGFILES	:=	$(foreach dir,$(GRAPHICS),$(notdir $(wildcard $(dir)/*.png)))
-
-export SOUNDFILES  :=  $(foreach dir,$(SOUNDS),$(notdir $(wildcard $(dir)/*.*)))
 
 #---------------------------------------------------------------------------------
 # use CXX for linking C++ projects, CC for standard C
@@ -110,34 +103,6 @@ CXXFLAGS += $(INCLUDE)
 $(OUTPUT):	$(OFILES)
 	@echo linking $(notdir $@)
 	@$(LD) -o $@ $^ $(LDFLAGS) 
- 
-#---------------------------------------------------------------------------------
-# canned command sequence for binary data
-#---------------------------------------------------------------------------------
-bin2s_sym  = `(echo $(*F) | sed -e 's/^\([0-9]\)/_\1/' | tr . _)`
-bin2s_file = `(echo $(*F) | tr . _)`
-
-define bin2s
-	echo "\
-.section .rodata \n\
-.global $(bin2s_sym)_data \n\
-.global $(bin2s_sym)_size \n\
-$(bin2s_sym)_data: .incbin \"$<\" \n\
-$(bin2s_sym)_size: .int .-$(bin2s_sym)_data \n\
-	" > $(bin2s_file).s
-	
-	echo "\
-extern const char $(bin2s_sym)_data[]; \n\
-extern const unsigned $(bin2s_sym)_size; \n\
-	" > $(bin2s_file).h
-
-endef
-
-#---------------------------------------------------------------------------------
-%.s %.h	: %.png
-#---------------------------------------------------------------------------------
-	@echo $(notdir $<)
-	@$(bin2s)
 
 #---------------------------------------------------------------------------------
 %.o: %.s
