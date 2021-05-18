@@ -9,11 +9,92 @@ bool OPLPatch::load(const char *path, OPLPatch (&patches)[256])
 	FILE *file = fopen(path, "rb");
 	if (!file) return false;
 
-	bool ok = loadOP2(file, patches);
+	bool ok = loadWOPL(file, patches)
+	       || loadOP2(file, patches);
 	
 	fclose(file);
 	
 	return ok;
+}
+
+// ----------------------------------------------------------------------------
+bool OPLPatch::loadWOPL(FILE *file, OPLPatch (&patches)[256])
+{
+	uint8_t bytes[66] = {0};
+	
+	fseek(file, 0, SEEK_SET);
+	fread(bytes, 1, 19, file);
+	if (strcmp((const char*)bytes, "WOPL3-BANK"))
+		return false;
+	
+	// mixed endianness? why???
+	uint16_t version   = bytes[11] | (bytes[12] << 8);
+	uint16_t numMelody = (bytes[13] << 8) | bytes[14];
+	uint16_t numPerc   = (bytes[15] << 8) | bytes[16];
+	
+	if (version > 3)
+		return false;
+	
+	// currently not supported: global LFO flags, volume model options
+	
+	if (version >= 2) // skip bank names
+		fseek(file, 34 * (numMelody + numPerc), SEEK_CUR);
+	
+	const unsigned instSize = (version >= 3) ? 66 : 62;
+	
+	for (unsigned i = 0; i < 128 * (numMelody + numPerc); i++)
+	{
+		fread(bytes, 1, instSize, file);
+		
+		const unsigned bank = i >> 7;
+		unsigned key;
+		if (bank < numMelody)
+			key = (bank << 8) | (i & 0x7f);
+		else
+			key = ((bank - numMelody) << 8) | (i & 0x7f) | 0x80;
+		// only 1 melody and percussion bank supported right now
+		if (key & 0xff00)
+			continue;
+		
+		OPLPatch &patch = patches[key];
+		
+		// patch names
+		bytes[31] = '\0';
+		patch.name = (const char*)bytes;
+		// patch global settings
+		patch.voice[0].tune     = (int8_t)bytes[33] - 12;
+		patch.voice[1].tune     = (int8_t)bytes[35] - 12;
+		patch.velocity          = (int8_t)bytes[36];
+		patch.voice[1].finetune = (int8_t)bytes[37] / 128.0;
+		patch.fixedNote         = bytes[38];
+		patch.fourOp            = bytes[39] & 1;
+		patch.dualTwoOp         = bytes[39] & 2;
+		// ignore other data for this patch if it's a blank instrument
+		// *or* if one of the rhythm mode bits is set (not supported here)
+		if (bytes[39] & 0x3c)
+			continue;
+		
+		patch.voice[0].conn = bytes[40];
+		patch.voice[1].conn = bytes[41];
+		
+		// patch operator settings
+		unsigned pos = 42;
+		for (unsigned op = 0; op < 4; op++)
+		{
+			PatchVoice &voice = patch.voice[op/2];
+			
+			const unsigned n = (op % 2) ^ 1;
+			
+			voice.op_mode[n]  = bytes[pos++];
+			voice.op_ksr[n]   = bytes[pos]   & 0xc0;
+			voice.op_level[n] = bytes[pos++] & 0x3f;
+			voice.op_ad[n]    = bytes[pos++];
+			voice.op_sr[n]    = bytes[pos++];
+			voice.op_wave[n]  = bytes[pos++];
+		}
+	}
+	
+	return true;
 }
 
 // ----------------------------------------------------------------------------

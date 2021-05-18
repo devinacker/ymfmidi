@@ -31,8 +31,8 @@ int main(int argc, char **argv)
 	if (argc < 2)
 	{
 		printf("usage: %s path_to_song [path_to_patches]\n", argv[0]);
-		printf("supported song formats:  MUS\n");
-		printf("supported patch formats: OP2\n");
+		printf("supported song formats:  MID, MUS\n");
+		printf("supported patch formats: WOPL, OP2\n");
 		
 		exit(0);
 	}
@@ -43,7 +43,7 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 	
-	const char* patchPath = "./GENMIDI.op2";
+	const char* patchPath = "./GENMIDI.wopl";
 	if (argc >= 3)
 		patchPath = argv[2];
 	

@@ -351,7 +351,7 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 		voice->channel = &m_channels[channel & 15];
 		voice->on = voice->justChanged = true;
 		voice->note = note;
-		voice->velocity = velocity;
+		voice->velocity = ymfm::clamp((int)velocity + newPatch->velocity, 0, 127);
 		// set the second voice's duration to 1 so it can get dropped if we need it to
 		voice->duration = i;
 		

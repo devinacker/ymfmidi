@@ -24,6 +24,7 @@ struct OPLPatch
 	bool fourOp = false;
 	bool dualTwoOp = false; // only valid if fourOp = true
 	uint8_t fixedNote = 0;
+	int8_t velocity = 0; // MIDI velocity offset
 	
 	PatchVoice voice[2];
 	
@@ -31,6 +32,7 @@ struct OPLPatch
 
 private:
 	// individual format loaders
+	static bool loadWOPL(FILE *file, OPLPatch (&patches)[256]);
 	static bool loadOP2(FILE *file, OPLPatch (&patches)[256]);
 };
 
