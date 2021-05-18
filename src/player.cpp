@@ -383,7 +383,7 @@ void OPLPlayer::midiPitchControl(uint8_t channel, double pitch)
 {
 //	printf("midiPitchControl: chn %u, val %.02f\n", channel, pitch);
 	m_channels[channel & 15].pitch = pitch;
-	updateChannelVoices(channel, updateFrequency);
+	updateChannelVoices(channel, &OPLPlayer::updateFrequency);
 }
 
 // ----------------------------------------------------------------------------
@@ -405,12 +405,12 @@ void OPLPlayer::midiControlChange(uint8_t channel, uint8_t control, uint8_t valu
 	{
 	case 7:
 		m_channels[channel].volume = value;
-		updateChannelVoices(channel, updateVolume);
+		updateChannelVoices(channel, &OPLPlayer::updateVolume);
 		break;
 	
 	case 10:
 		m_channels[channel].pan = value;
-		updateChannelVoices(channel, updatePanning);
+		updateChannelVoices(channel, &OPLPlayer::updatePanning);
 		break;
 	}
 }

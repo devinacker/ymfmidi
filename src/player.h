@@ -2,6 +2,7 @@
 #define __PLAYER_H
 
 #include <ymfm_opl.h>
+#include <climits>
 
 #include "patches.h"
 
