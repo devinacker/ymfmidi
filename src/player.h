@@ -63,6 +63,7 @@ public:
 	virtual ~OPLPlayer();
 	
 	void setSampleRate(uint32_t rate);
+	void setGain(double gain);
 	bool loadSequence(const char* path);
 	bool loadPatches(const char* path);
 	
@@ -113,6 +114,7 @@ private:
 
 	ymfm::ymf262 *m_opl3;
 	uint32_t m_sampleRate; // output sample rate (default 44.1k)
+	double m_sampleScale; // convert 16-bit samples to float
 	double m_sampleStep; // ratio of OPL sample rate to output sample rate (usually < 1.0)
 	double m_samplePos; // number of pending output samples (when >= 1.0, output one)
 	uint32_t m_samplesLeft; // remaining samples until next midi event

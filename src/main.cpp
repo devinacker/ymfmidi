@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <getopt.h>
 
 #define SDL_MAIN_HANDLED
 extern "C" {
@@ -7,11 +8,15 @@ extern "C" {
 
 #include "player.h"
 
+static bool g_running = true;
+
+// ----------------------------------------------------------------------------
 static void cls()
 {
 	printf("\x1b[2J");
 }
 
+// ----------------------------------------------------------------------------
 static void audioCallback(void *data, uint8_t *stream, int len)
 {
 	memset(stream, 0, len);
@@ -20,49 +25,120 @@ static void audioCallback(void *data, uint8_t *stream, int len)
 	player->generate(reinterpret_cast<float*>(stream), len / (2 * sizeof(float)));
 }
 
+// ----------------------------------------------------------------------------
+void usage()
+{
+	fprintf(stderr, 
+	"usage: ymfm-test [options] song_path [patch_path]\n"
+	"\n"
+	"supported song formats:  MID, MUS\n"
+	"supported patch formats: WOPL, OP2\n"
+	"\n"
+	"supported options:\n"
+	"  -h / --help             show this information and exit\n"
+	"  -b / --buf <num>        set buffer size (default 4096)\n"
+	"  -g / --gain <num>       set gain amount (default 1.0)\n"
+	"  -r / --rate <num>       set sample rate (default 44100)\n"
+	"\n"
+	);
+	
+	exit(1);
+}
+
+static const option options[] = 
+{
+	{"help", 0, nullptr, 'h'},
+	{"buf",  1, nullptr, 'b'},
+	{"gain", 1, nullptr, 'g'},
+	{"rate", 1, nullptr, 'r'},
+	{0}
+};
+
+// ----------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
 	setbuf(stdout, NULL);
+	
+	const char* songPath;
+	const char* patchPath = "./GENMIDI.wopl";
+	int sampleRate = 44100;
+	int bufferSize = 4096;
+	double gain = 1.0;
 
-	SDL_SetMainReady();
+	char opt;
+	while ((opt = getopt_long(argc, argv, ":hb:g:r:", options, nullptr)) != -1)
+	{
+		switch (opt)
+		{
+		case ':':
+		case 'h':
+			usage();
+			break;
+		
+		case 'b':
+			bufferSize = atoi(optarg);
+			printf("bufferSize = %s\n", optarg);
+			if (!bufferSize)
+			{
+				fprintf(stderr, "invalid buffer size: %s\n", optarg);
+				exit(1);
+			}
+			break;
+		
+		case 'g':
+			gain = atof(optarg);
+			printf("gain = %s\n", optarg);
+			if (!gain)
+			{
+				fprintf(stderr, "invalid gain: %s\n", optarg);
+				exit(1);
+			}
+			break;
+		
+		case 'r':
+			sampleRate = atoi(optarg);
+			printf("sampleRate = %s\n", optarg);
+			if (!sampleRate)
+			{
+				fprintf(stderr, "invalid sample rate: %s\n", optarg);
+				exit(1);
+			}
+			break;
+		}
+	}
+	
+	if (optind >= argc)
+		usage();
+	
+	songPath = argv[optind];
+	if (optind + 1 < argc)
+		patchPath = argv[optind + 1];
 	
 	auto player = new OPLPlayer;
 	
-	if (argc < 2)
+	if (!player->loadSequence(songPath))
 	{
-		printf("usage: %s path_to_song [path_to_patches]\n", argv[0]);
-		printf("supported song formats:  MID, MUS\n");
-		printf("supported patch formats: WOPL, OP2\n");
-		
-		exit(0);
-	}
-	
-	if (!player->loadSequence(argv[1]))
-	{
-		printf("couldn't load %s\n", argv[1]);
+		fprintf(stderr, "couldn't load %s\n", songPath);
 		exit(1);
 	}
 	
-	const char* patchPath = "./GENMIDI.wopl";
-	if (argc >= 3)
-		patchPath = argv[2];
-	
 	if (!player->loadPatches(patchPath))
 	{
-		printf("couldn't load %s\n", patchPath);
+		fprintf(stderr, "couldn't load %s\n", patchPath);
 		exit(1);
 	}
 	
 	// init SDL audio now
+	SDL_SetMainReady();
 	SDL_Init(SDL_INIT_AUDIO);
 	
 	SDL_AudioSpec want = {0};
 	SDL_AudioSpec have = {0};
 	
-	want.freq = 44100;
+	want.freq = sampleRate;
 	want.format = AUDIO_F32;
 	want.channels = 2;
-	want.samples = 4096;
+	want.samples = bufferSize;
 	want.callback = audioCallback;
 	want.userdata = player;
 	SDL_OpenAudio(&want, &have);
@@ -70,11 +146,12 @@ int main(int argc, char **argv)
 	
 	// blah blah
 	player->setSampleRate(have.freq);
+	player->setGain(gain);
 	SDL_PauseAudio(0);
 	
 	cls();
-	
-	while(1)
+
+	while (g_running)
 	{
 		player->display();
 		SDL_Delay(50);

@@ -18,11 +18,11 @@ OPLPlayer::OPLPlayer()
 	m_opl3 = new ymfm::ymf262(*this);
 	m_sequence = nullptr;
 	
-	m_sampleRate = 44100;
-	m_sampleStep = 1.0;
 	m_samplePos = 0.0;
 	m_samplesLeft = 0;
-		
+	setSampleRate(44100);
+	setGain(1.0);
+	
 	reset();
 }
 
@@ -38,8 +38,15 @@ void OPLPlayer::setSampleRate(uint32_t rate)
 {
 	uint32_t rateOPL = m_opl3->sample_rate(masterClock);
 	m_sampleStep = (double)rate / rateOPL;
+	m_sampleRate = rate;
 	
-	printf("OPL sample rate = %u / output sample rate = %u / step %02f\n", rateOPL, rate, m_sampleStep);
+//	printf("OPL sample rate = %u / output sample rate = %u / step %02f\n", rateOPL, rate, m_sampleStep);
+}
+
+// ----------------------------------------------------------------------------
+void OPLPlayer::setGain(double gain)
+{
+	m_sampleScale = 32768.0 / gain;
 }
 
 // ----------------------------------------------------------------------------
@@ -75,17 +82,22 @@ void OPLPlayer::generate(float *data, unsigned numSamples)
 			}
 		}
 	
-		for (; m_samplePos < 1.0; m_samplePos += m_sampleStep)
+		while (m_samplePos < 1.0)
+		{
 			m_opl3->generate(&output);
+			m_samplePos += m_sampleStep;
+		}
 		
-		const double gain = 1.2;
-		
-		*data++ = output.data[0] / (32768.0 / gain);
-		*data++ = output.data[1] / (32768.0 / gain);
-		
-		numSamples--;
-		m_samplePos -= 1.0;
-		m_samplesLeft--;
+		while (m_samplePos >= 1.0 && numSamples > 0)
+		{
+			*data++ = output.data[0] / m_sampleScale;
+			*data++ = output.data[1] / m_sampleScale;
+			
+			numSamples--;
+			m_samplePos -= 1.0;
+			if (m_samplesLeft)
+				m_samplesLeft--;
+		}
 	}
 }
 
