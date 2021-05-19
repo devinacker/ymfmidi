@@ -38,7 +38,8 @@ void usage()
 	"supported options:\n"
 	"  -h / --help             show this information and exit\n"
 	"  -q / --quiet            quiet (run non-interactively)\n"
-	
+	"\n"
+	"  -n / --num <num>        set number of chips (default 1)\n"
 	"  -b / --buf <num>        set buffer size (default 4096)\n"
 	"  -g / --gain <num>       set gain amount (default 1.0)\n"
 	"  -r / --rate <num>       set sample rate (default 44100)\n"
@@ -52,6 +53,7 @@ static const option options[] =
 {
 	{"help",  0, nullptr, 'h'},
 	{"quiet", 0, nullptr, 'q'},
+	{"num",   1, nullptr, 'n'},
 	{"buf",   1, nullptr, 'b'},
 	{"gain",  1, nullptr, 'g'},
 	{"rate",  1, nullptr, 'r'},
@@ -76,9 +78,10 @@ int main(int argc, char **argv)
 	int sampleRate = 44100;
 	int bufferSize = 4096;
 	double gain = 1.0;
+	int numChips = 1;
 
 	char opt;
-	while ((opt = getopt_long(argc, argv, ":hqb:g:r:", options, nullptr)) != -1)
+	while ((opt = getopt_long(argc, argv, ":hqn:b:g:r:", options, nullptr)) != -1)
 	{
 		switch (opt)
 		{
@@ -91,9 +94,16 @@ int main(int argc, char **argv)
 			interactive = false;
 			break;
 		
+		case 'n':
+			numChips = atoi(optarg);
+			if (numChips < 1)
+			{
+				fprintf(stderr, "number of chips must be at least 1\n");
+				exit(1);
+			}
+		
 		case 'b':
 			bufferSize = atoi(optarg);
-			printf("bufferSize = %s\n", optarg);
 			if (!bufferSize)
 			{
 				fprintf(stderr, "invalid buffer size: %s\n", optarg);
@@ -103,7 +113,6 @@ int main(int argc, char **argv)
 		
 		case 'g':
 			gain = atof(optarg);
-			printf("gain = %s\n", optarg);
 			if (!gain)
 			{
 				fprintf(stderr, "invalid gain: %s\n", optarg);
@@ -113,7 +122,6 @@ int main(int argc, char **argv)
 		
 		case 'r':
 			sampleRate = atoi(optarg);
-			printf("sampleRate = %s\n", optarg);
 			if (!sampleRate)
 			{
 				fprintf(stderr, "invalid sample rate: %s\n", optarg);
@@ -130,7 +138,7 @@ int main(int argc, char **argv)
 	if (optind + 1 < argc)
 		patchPath = argv[optind + 1];
 	
-	auto player = new OPLPlayer;
+	auto player = new OPLPlayer(numChips);
 	
 	if (!player->loadSequence(songPath))
 	{

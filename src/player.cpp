@@ -12,10 +12,15 @@ static const unsigned oper_num[18] = {
 };
 
 // ----------------------------------------------------------------------------
-OPLPlayer::OPLPlayer()
+OPLPlayer::OPLPlayer(int numChips)
 	: ymfm::ymfm_interface()
 {
-	m_opl3 = new ymfm::ymf262(*this);
+	m_numChips = numChips;
+	m_opl3.resize(numChips);
+	for (auto& opl : m_opl3)
+		opl = new ymfm::ymf262(*this);
+		
+	m_voices.resize(numChips * 18);
 	m_sequence = nullptr;
 	
 	m_samplePos = 0.0;
@@ -29,14 +34,15 @@ OPLPlayer::OPLPlayer()
 // ----------------------------------------------------------------------------
 OPLPlayer::~OPLPlayer()
 {
-	delete m_opl3;
+	for (auto& opl : m_opl3)
+		delete opl;
 	delete m_sequence;
 }
 
 // ----------------------------------------------------------------------------
 void OPLPlayer::setSampleRate(uint32_t rate)
 {
-	uint32_t rateOPL = m_opl3->sample_rate(masterClock);
+	uint32_t rateOPL = m_opl3[0]->sample_rate(masterClock);
 	m_sampleStep = (double)rate / rateOPL;
 	m_sampleRate = rate;
 	
@@ -67,7 +73,7 @@ bool OPLPlayer::loadPatches(const char* path)
 // ----------------------------------------------------------------------------
 void OPLPlayer::generate(float *data, unsigned numSamples)
 {
-	ymfm::ymf262::output_data output;
+	ymfm::ymf262::output_data output[m_numChips];
 
 	while (numSamples)
 	{
@@ -84,15 +90,19 @@ void OPLPlayer::generate(float *data, unsigned numSamples)
 	
 		while (m_samplePos < 1.0)
 		{
-			m_opl3->generate(&output);
+			for (unsigned i = 0; i < m_numChips; i++)
+				m_opl3[i]->generate(&output[i]);
 			m_samplePos += m_sampleStep;
 		}
 		
 		while (m_samplePos >= 1.0 && numSamples > 0)
 		{
-			*data++ = output.data[0] / m_sampleScale;
-			*data++ = output.data[1] / m_sampleScale;
-			
+			for (unsigned i = 0; i < m_numChips; i++)
+			{
+				data[0] += output[i].data[0] / m_sampleScale;
+				data[1] += output[i].data[1] / m_sampleScale;
+			}
+			data += 2;
 			numSamples--;
 			m_samplePos -= 1.0;
 			if (m_samplesLeft)
@@ -106,17 +116,73 @@ void OPLPlayer::display()
 {
 	for (int i = 0; i < 18; i++)
 	{
-		printf("voice %-2u: ", i + 1);
-		if (m_voices[i].channel)
+		if (m_numChips == 1)
 		{
-			printf("channel %-2u, note %-3u %c %-32s\n",
-				m_voices[i].channel->num + 1, m_voices[i].note,
-				m_voices[i].on ? '*' : ' ',
-				m_voices[i].patch ? m_voices[i].patch->name.c_str() : "");
+			printf("voice %-2u: ", i + 1);
+			if (m_voices[i].channel)
+			{
+				printf("channel %-2u, note %-3u %c %-32s\n",
+					m_voices[i].channel->num + 1, m_voices[i].note,
+					m_voices[i].on ? '*' : ' ',
+					m_voices[i].patch ? m_voices[i].patch->name.c_str() : "");
+			}
+			else
+			{
+				printf("%69s\n", "");
+			}
 		}
-		else
+		else if (m_numChips == 2)
 		{
-			printf("%69s\n", "");
+			for (int j = i; j < m_voices.size(); j += 18)
+			{
+				printf("voice %-2u: ", j + 1);
+				if (m_voices[j].channel)
+				{
+					printf("channel %-2u, note %-3u %c",
+						m_voices[j].channel->num + 1, m_voices[j].note,
+						m_voices[j].on ? '*' : ' ');
+				}
+				else
+				{
+					printf("%22s", "");
+				}
+				
+				if (j < 18)
+					printf("        | ");
+			}
+			printf("\n");
+		}
+		else if (m_numChips <= 4)
+		{
+			for (int j = i; j < m_voices.size(); j += 18)
+			{
+				printf("%-2u: ", j + 1);
+				if (m_voices[j].channel)
+				{
+					printf("channel %-2u %c",
+						m_voices[j].channel->num + 1,
+						m_voices[j].on ? '*' : ' ');
+				}
+				else
+				{
+					printf("%12s", "");
+				}
+				
+				if (j < m_voices.size() - 18)
+					printf(" | ");
+			}
+			printf("\n");
+		}
+		else if (m_numChips <= 8)
+		{
+			for (int j = i; j < m_voices.size(); j += 18)
+			{
+				printf("%-3u: %c ", j + 1, m_voices[j].on ? '*' : ' ');
+				
+				if (j < m_voices.size() - 18)
+					printf(" | ");
+			}
+			printf("\n");
 		}
 	}
 }
@@ -124,24 +190,27 @@ void OPLPlayer::display()
 // ----------------------------------------------------------------------------
 void OPLPlayer::reset()
 {
-	m_opl3->reset();
-	
-	// enable OPL3 stuff
-	write(REG_TEST, 1 << 5);
-	write(REG_NEW, 1);
-	
+	for (auto& opl : m_opl3)
+	{
+		opl->reset();
+		// enable OPL3 stuff
+		write(opl, REG_TEST, 1 << 5);
+		write(opl, REG_NEW, 1);
+	}
+		
 	// reset MIDI channel and OPL voice status
 	for (int i = 0; i < 16; i++)
 	{
 		m_channels[i] = MIDIChannel();
 		m_channels[i].num = i;
 	}
-	for (int i = 0; i < 18; i++)
+	for (int i = 0; i < m_voices.size(); i++)
 	{
 		m_voices[i] = OPLVoice();
 	//	m_voices[i].channel = m_channels;
-		m_voices[i].num = voice_num[i];
-		m_voices[i].op = oper_num[i];
+		m_voices[i].chip = m_opl3[i / 18];
+		m_voices[i].num = voice_num[i % 18];
+		m_voices[i].op = oper_num[i % 18];
 	}
 	
 	if (m_sequence)
@@ -150,13 +219,13 @@ void OPLPlayer::reset()
 }
 
 // ----------------------------------------------------------------------------
-void OPLPlayer::write(uint16_t addr, uint8_t data)
+void OPLPlayer::write(ymfm::ymf262* chip, uint16_t addr, uint8_t data)
 {
 	if (addr < 0x100)
-		m_opl3->write_address((uint8_t)addr);
+		chip->write_address((uint8_t)addr);
 	else
-		m_opl3->write_address_hi((uint8_t)addr);
-	m_opl3->write_data(data);
+		chip->write_address_hi((uint8_t)addr);
+	chip->write_data(data);
 }
 
 // ----------------------------------------------------------------------------
@@ -249,17 +318,17 @@ void OPLPlayer::updatePatch(OPLVoice& voice, const OPLPatch *newPatch, uint8_t n
 		voice.patchVoice = &patchVoice;
 		
 		// 0x20: vibrato, sustain, multiplier
-		write(REG_OP_MODE + voice.op,     patchVoice.op_mode[0]);
-		write(REG_OP_MODE + voice.op + 3, patchVoice.op_mode[1]);
+		write(voice.chip, REG_OP_MODE + voice.op,     patchVoice.op_mode[0]);
+		write(voice.chip, REG_OP_MODE + voice.op + 3, patchVoice.op_mode[1]);
 		// 0x60: attack/decay
-		write(REG_OP_AD + voice.op,     patchVoice.op_ad[0]);
-		write(REG_OP_AD + voice.op + 3, patchVoice.op_ad[1]);
+		write(voice.chip, REG_OP_AD + voice.op,     patchVoice.op_ad[0]);
+		write(voice.chip, REG_OP_AD + voice.op + 3, patchVoice.op_ad[1]);
 		// 0x80: sustain/release
-		write(REG_OP_SR + voice.op,     patchVoice.op_sr[0]);
-		write(REG_OP_SR + voice.op + 3, patchVoice.op_sr[1]);
+		write(voice.chip, REG_OP_SR + voice.op,     patchVoice.op_sr[0]);
+		write(voice.chip, REG_OP_SR + voice.op + 3, patchVoice.op_sr[1]);
 		// 0xe0: waveform
-		write(REG_OP_WAVEFORM + voice.op,     patchVoice.op_wave[0]);
-		write(REG_OP_WAVEFORM + voice.op + 3, patchVoice.op_wave[1]);
+		write(voice.chip, REG_OP_WAVEFORM + voice.op,     patchVoice.op_wave[0]);
+		write(voice.chip, REG_OP_WAVEFORM + voice.op + 3, patchVoice.op_wave[1]);
 	}
 }
 
@@ -285,10 +354,10 @@ void OPLPlayer::updateVolume(OPLVoice& voice)
 		level = std::min(0x3f, patchVoice->op_level[0] + atten);
 	else
 		level = patchVoice->op_level[0];
-	write(REG_OP_LEVEL + voice.op,     level | patchVoice->op_ksr[0]);
+	write(voice.chip, REG_OP_LEVEL + voice.op,     level | patchVoice->op_ksr[0]);
 		
 	level = std::min(0x3f, patchVoice->op_level[1] + atten);
-	write(REG_OP_LEVEL + voice.op + 3, level | patchVoice->op_ksr[1]);
+	write(voice.chip, REG_OP_LEVEL + voice.op + 3, level | patchVoice->op_ksr[1]);
 }
 
 // ----------------------------------------------------------------------------
@@ -301,7 +370,7 @@ void OPLPlayer::updatePanning(OPLVoice& voice)
 	else if (voice.channel->pan >= 96)
 		pan = 0x20;
 	
-	write(REG_VOICE_CNT + voice.num, voice.patchVoice->conn | pan);
+	write(voice.chip, REG_VOICE_CNT + voice.num, voice.patchVoice->conn | pan);
 }
 
 // ----------------------------------------------------------------------------
@@ -330,8 +399,8 @@ void OPLPlayer::updateFrequency(OPLVoice& voice)
 	voice.freq += (octave << 10);
 	
 //	printf("voice.freq: %u\n", voice.freq);
-	write(REG_VOICE_FREQL + voice.num, voice.freq & 0xff);
-	write(REG_VOICE_FREQH + voice.num, (voice.freq >> 8) | (voice.on ? (1 << 5) : 0));
+	write(voice.chip, REG_VOICE_FREQL + voice.num, voice.freq & 0xff);
+	write(voice.chip, REG_VOICE_FREQH + voice.num, (voice.freq >> 8) | (voice.on ? (1 << 5) : 0));
 }
 
 // ----------------------------------------------------------------------------
@@ -385,7 +454,7 @@ void OPLPlayer::midiNoteOff(uint8_t channel, uint8_t note)
 		voice->justChanged = voice->on;
 		voice->on = false;
 
-		write(REG_VOICE_FREQH + voice->num, voice->freq >> 8);
+		write(voice->chip, REG_VOICE_FREQH + voice->num, voice->freq >> 8);
 	}
 }
 

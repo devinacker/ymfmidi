@@ -3,6 +3,7 @@
 
 #include <ymfm_opl.h>
 #include <climits>
+#include <vector>
 
 #include "patches.h"
 
@@ -20,6 +21,7 @@ struct MIDIChannel
 
 struct OPLVoice
 {
+	ymfm::ymf262 *chip = nullptr;
 	const MIDIChannel *channel = nullptr;
 	const OPLPatch *patch = nullptr;
 	const PatchVoice *patchVoice = nullptr;
@@ -59,7 +61,7 @@ public:
 		REG_NEW         = 0x105,
 	};
 
-	OPLPlayer();
+	OPLPlayer(int numChips = 1);
 	virtual ~OPLPlayer();
 	
 	void setSampleRate(uint32_t rate);
@@ -87,7 +89,7 @@ public:
 	void midiControlChange(uint8_t channel, uint8_t control, uint8_t value);
 	
 private:
-	void write(uint16_t addr, uint8_t data);
+	void write(ymfm::ymf262* chip, uint16_t addr, uint8_t data);
 	
 	// find a voice with the oldest note
 	OPLVoice* findVoice();
@@ -112,7 +114,8 @@ private:
 	// update the block and F-number for a voice (also key on/off)
 	void updateFrequency(OPLVoice& voice);
 
-	ymfm::ymf262 *m_opl3;
+	std::vector<ymfm::ymf262*> m_opl3;
+	unsigned m_numChips;
 	uint32_t m_sampleRate; // output sample rate (default 44.1k)
 	double m_sampleScale; // convert 16-bit samples to float
 	double m_sampleStep; // ratio of OPL sample rate to output sample rate (usually < 1.0)
@@ -120,7 +123,7 @@ private:
 	uint32_t m_samplesLeft; // remaining samples until next midi event
 	
 	MIDIChannel m_channels[16];
-	OPLVoice m_voices[18];
+	std::vector<OPLVoice> m_voices;
 	
 	Sequence *m_sequence;
 	OPLPatch m_patches[256];

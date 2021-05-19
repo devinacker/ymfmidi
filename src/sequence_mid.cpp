@@ -283,7 +283,7 @@ uint32_t SequenceMID::update(OPLPlayer& player)
 	for (auto track : m_tracks)
 		track->advance(tickDelay);
 	
-	double samplesPerTick = player.sampleRate() / m_ticksPerSec;
+	double samplesPerTick = player.sampleRate() / m_ticksPerSec;	
 	return round(tickDelay * samplesPerTick);
 }
 
