@@ -1,28 +1,29 @@
 #include <cstdio>
 #include <getopt.h>
+#include <signal.h>
+#include <unistd.h>
 
 #define SDL_MAIN_HANDLED
 extern "C" {
 #include <SDL2/SDL.h>
 }
 
+#include "console.h"
 #include "player.h"
 
 static bool g_running = true;
-
-// ----------------------------------------------------------------------------
-static void cls()
-{
-	printf("\x1b[2J");
-}
+static bool g_paused = false;
 
 // ----------------------------------------------------------------------------
 static void audioCallback(void *data, uint8_t *stream, int len)
 {
 	memset(stream, 0, len);
 	
-	auto player = reinterpret_cast<OPLPlayer*>(data);
-	player->generate(reinterpret_cast<float*>(stream), len / (2 * sizeof(float)));
+	if (!g_paused)
+	{
+		auto player = reinterpret_cast<OPLPlayer*>(data);
+		player->generate(reinterpret_cast<float*>(stream), len / (2 * sizeof(float)));
+	}
 }
 
 // ----------------------------------------------------------------------------
@@ -36,6 +37,8 @@ void usage()
 	"\n"
 	"supported options:\n"
 	"  -h / --help             show this information and exit\n"
+	"  -q / --quiet            quiet (run non-interactively)\n"
+	
 	"  -b / --buf <num>        set buffer size (default 4096)\n"
 	"  -g / --gain <num>       set gain amount (default 1.0)\n"
 	"  -r / --rate <num>       set sample rate (default 44100)\n"
@@ -47,32 +50,45 @@ void usage()
 
 static const option options[] = 
 {
-	{"help", 0, nullptr, 'h'},
-	{"buf",  1, nullptr, 'b'},
-	{"gain", 1, nullptr, 'g'},
-	{"rate", 1, nullptr, 'r'},
+	{"help",  0, nullptr, 'h'},
+	{"quiet", 0, nullptr, 'q'},
+	{"buf",   1, nullptr, 'b'},
+	{"gain",  1, nullptr, 'g'},
+	{"rate",  1, nullptr, 'r'},
 	{0}
 };
+
+// ----------------------------------------------------------------------------
+void quit(int)
+{
+	g_running = false;
+}
 
 // ----------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
 	setbuf(stdout, NULL);
 	
+	bool interactive = true;
+	
 	const char* songPath;
-	const char* patchPath = "./GENMIDI.wopl";
+	const char* patchPath = "GENMIDI.wopl";
 	int sampleRate = 44100;
 	int bufferSize = 4096;
 	double gain = 1.0;
 
 	char opt;
-	while ((opt = getopt_long(argc, argv, ":hb:g:r:", options, nullptr)) != -1)
+	while ((opt = getopt_long(argc, argv, ":hqb:g:r:", options, nullptr)) != -1)
 	{
 		switch (opt)
 		{
 		case ':':
 		case 'h':
 			usage();
+			break;
+		
+		case 'q':
+			interactive = false;
 			break;
 		
 		case 'b':
@@ -149,15 +165,48 @@ int main(int argc, char **argv)
 	player->setGain(gain);
 	SDL_PauseAudio(0);
 	
-	cls();
+	if (interactive)
+	{
+		consoleOpen();
+		consolePos(0);
+	}
+	
+	printf("song:    %s\n", songPath);
+	printf("patches: %s\n", patchPath);
+
+	signal(SIGINT, quit);
+
+	if (interactive)
+	{
+		printf("\ncontrols: [p] pause, [r] restart, [esc/q] quit\n");
+	}
 
 	while (g_running)
 	{
-		player->display();
+		if (interactive)
+		{
+			consolePos(5);
+			player->display();
+			switch (consoleGetKey())
+			{
+			case 0x1b:
+			case 'q':
+				g_running = false;
+				continue;
+			
+			case 'p':
+				g_paused ^= true;
+				break;
+			
+			case 'r':
+				g_paused = false;
+				player->reset();
+				break;
+			}
+		}
 		SDL_Delay(50);
 	}
 
-	cls();
 	SDL_Quit();
 	delete player;
 	

@@ -104,7 +104,6 @@ void OPLPlayer::generate(float *data, unsigned numSamples)
 // ----------------------------------------------------------------------------
 void OPLPlayer::display()
 {
-	printf("\x1b[H");
 	for (int i = 0; i < 18; i++)
 	{
 		printf("voice %-2u: ", i + 1);
@@ -117,7 +116,7 @@ void OPLPlayer::display()
 		}
 		else
 		{
-			printf("%70s\n", "");
+			printf("%69s\n", "");
 		}
 	}
 }
