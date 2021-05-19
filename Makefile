@@ -2,129 +2,68 @@
 .SUFFIXES:
 #---------------------------------------------------------------------------------
 
-#---------------------------------------------------------------------------------
-# TARGET is the name of the output
-# BUILD is the directory where object files & intermediate files will be placed
-# SOURCES is a list of directories containing source code
-# INCLUDES is a list of directories containing extra header files
-#---------------------------------------------------------------------------------
 TARGET		:=	ymfm-test
-BUILD		:=	obj
-SOURCES		:=	./src ./ymfm/src
-DATA		:=	data  
+BUILD       :=  obj
+SOURCES		:=	src ymfm/src
 INCLUDES	:=	$(SOURCES) include
 
-#---------------------------------------------------------------------------------
-# any extra libraries we wish to link with the project
-#---------------------------------------------------------------------------------
-LIBS	:= sdl2
+CFILES		:=	$(foreach dir,$(SOURCES),$(wildcard $(dir)/*.c))
+CPPFILES	:=	$(foreach dir,$(SOURCES),$(wildcard $(dir)/*.cpp))
 
-#---------------------------------------------------------------------------------
-# options for code generation
-#---------------------------------------------------------------------------------
-CFLAGS	:=	-Wall -O2 \
-			`pkg-config --cflags $(LIBS)` \
+CFLAGS	:=	-Wall \
+			`pkg-config --cflags sdl2` \
 			-Wno-sign-compare
 
-CXXFLAGS	:= $(CFLAGS) -std=c++14
+CXXFLAGS	= $(CFLAGS) -std=c++14
 
 ASFLAGS	:=	$(ARCH)
-LDFLAGS	=	-s -mconsole \
-			`pkg-config --libs $(LIBS)` \
+LDFLAGS	:=	`pkg-config --libs sdl2` \
 			-Wl,-rpath=. 
 
-#---------------------------------------------------------------------------------
-# no real need to edit anything past this point unless you need to add additional
-# rules for different file extensions
-#---------------------------------------------------------------------------------
-ifneq ($(BUILD),$(notdir $(CURDIR)))
-#---------------------------------------------------------------------------------
- 
-export OUTPUT	:=	$(CURDIR)/$(TARGET)
- 
-export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
-					$(foreach dir,$(DATA),$(CURDIR)/$(dir))
-
-export DEPSDIR	:=	$(CURDIR)/$(BUILD)
-
-CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
-CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
-SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
-BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
-
-#---------------------------------------------------------------------------------
-# use CXX for linking C++ projects, CC for standard C
-#---------------------------------------------------------------------------------
-ifeq ($(strip $(CPPFILES)),)
-#---------------------------------------------------------------------------------
-	export LD	:=	$(CC)
-#---------------------------------------------------------------------------------
+ifeq ($(DEBUG),1)
+  CFLAGS  += -O0 -g
+  LDFLAGS += -g
 else
-#---------------------------------------------------------------------------------
-	export LD	:=	$(CXX)
-#---------------------------------------------------------------------------------
+  CFLAGS  += -O2
+  LDFLAGS += -s
 endif
-#---------------------------------------------------------------------------------
 
-export OFILES	:=	$(PNGFILES:.png=.o) \
-					$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
- 
-export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
-					$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
-					$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
-					-I$(CURDIR)/$(BUILD)
- 
-export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib)
- 
-.PHONY: $(BUILD) clean
- 
-#---------------------------------------------------------------------------------
-$(BUILD):
-	@[ -d $@ ] || mkdir -p $@
-	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
- 
-#---------------------------------------------------------------------------------
-clean:
-	@echo clean ...
-	@rm -fr $(BUILD) $(TARGET) 
- 
- 
-#---------------------------------------------------------------------------------
-else
- 
-DEPENDS	:=	$(OFILES:.o=.d)
+ifeq ($(OS),Windows_NT)
+  LDFLAGS += -mconsole
+endif
 
+OUTPUT	:=	$(CURDIR)/$(TARGET)
+
+OFILES	:=	$(addprefix $(BUILD)/, $(CPPFILES:.cpp=.o) $(CFILES:.c=.o))
+
+INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir))
 CFLAGS   += $(INCLUDE)
 CXXFLAGS += $(INCLUDE)
 
-#---------------------------------------------------------------------------------
-# main targets
+.PHONY: clean
+
 #---------------------------------------------------------------------------------
 $(OUTPUT):	$(OFILES)
+#---------------------------------------------------------------------------------
 	@echo linking $(notdir $@)
-	@$(LD) -o $@ $^ $(LDFLAGS) 
+	@$(CXX) -o $@ $^ $(LDFLAGS) 
 
 #---------------------------------------------------------------------------------
-%.o: %.s
+$(BUILD)/%.o: %.cpp
 #---------------------------------------------------------------------------------
 	@echo $(notdir $<)
-	@$(CC) -MMD -MP -MF $(DEPSDIR)/$*.d -x assembler-with-cpp $(ASFLAGS) -c $< -o $@
+	@mkdir -p $(dir $@)
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
 
 #---------------------------------------------------------------------------------
-%.o: %.cpp
+$(BUILD)/%.o: %.c
 #---------------------------------------------------------------------------------
 	@echo $(notdir $<)
-	@$(CXX) -MMD -MP -MF $(DEPSDIR)/$*.d $(CXXFLAGS) -c $< -o $@
+	@mkdir -p $(dir $@)
+	@$(CC) $(CFLAGS) -c $< -o $@
 
 #---------------------------------------------------------------------------------
-%.o: %.c
-#---------------------------------------------------------------------------------
-	@echo $(notdir $<)
-	@$(CC) -MMD -MP -MF $(DEPSDIR)/$*.d $(CFLAGS) -c $< -o $@
-
+clean:
+	@echo clean ...
+	@rm -fr $(BUILD) $(TARGET) $(OFILES)
  
--include $(DEPENDS)
- 
-#---------------------------------------------------------------------------------------
-endif
-#---------------------------------------------------------------------------------------
