@@ -202,8 +202,6 @@ SequenceMID::SequenceMID(FILE *file)
 	uint16_t numTracks = READ_U16BE(bytes, 6);
 	m_ticksPerBeat = READ_U16BE(bytes, 8);
 	
-	reset();
-	
 	fseek(file, len + 8, SEEK_SET);
 	
 	for (unsigned i = 0; i < numTracks; i++)
@@ -266,19 +264,23 @@ void SequenceMID::setUsecPerBeat(uint32_t usec)
 uint32_t SequenceMID::update(OPLPlayer& player)
 {
 	uint32_t tickDelay = UINT_MAX;
-	bool atEnd = true;
+	
+	bool tracksAtEnd = true;
 
 	for (auto track : m_tracks)
 	{
 		tickDelay = std::min(tickDelay, track->update(player));
-		atEnd &= track->atEnd();
+		tracksAtEnd &= track->atEnd();
 	}
 	
-	if (atEnd)
+	if (tracksAtEnd)
 	{
 		reset();
+		m_atEnd = true;
 		return 0;
 	}
+	
+	m_atEnd = false;
 	
 	for (auto track : m_tracks)
 		track->advance(tickDelay);

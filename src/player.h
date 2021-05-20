@@ -64,6 +64,7 @@ public:
 	OPLPlayer(int numChips = 1);
 	virtual ~OPLPlayer();
 	
+	void setLoop(bool loop) { m_looping = loop; }
 	void setSampleRate(uint32_t rate);
 	void setGain(double gain);
 	bool loadSequence(const char* path);
@@ -77,10 +78,11 @@ public:
 	void displayVoices();
 	
 	// misc. informational stuff
+	bool atEnd() const;
 	uint32_t sampleRate() const { return m_sampleRate; }
 	const std::string& patchName(uint8_t num) { return m_patches[num].name; }
 	
-	// reset OPL (and midi file?)
+	// reset OPL and midi file
 	void reset();
 	
 	// MIDI events, called by the file format handler
@@ -123,6 +125,7 @@ private:
 	double m_sampleStep; // ratio of OPL sample rate to output sample rate (usually < 1.0)
 	double m_samplePos; // number of pending output samples (when >= 1.0, output one)
 	uint32_t m_samplesLeft; // remaining samples until next midi event
+	bool m_looping;
 	
 	MIDIChannel m_channels[16];
 	std::vector<OPLVoice> m_voices;

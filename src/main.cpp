@@ -13,17 +13,18 @@ extern "C" {
 
 static bool g_running = true;
 static bool g_paused = false;
+static bool g_looping = true;
 
 // ----------------------------------------------------------------------------
 static void audioCallback(void *data, uint8_t *stream, int len)
 {
 	memset(stream, 0, len);
 	
-	if (!g_paused)
-	{
-		auto player = reinterpret_cast<OPLPlayer*>(data);
-		player->generate(reinterpret_cast<float*>(stream), len / (2 * sizeof(float)));
-	}
+	auto player = reinterpret_cast<OPLPlayer*>(data);
+	player->generate(reinterpret_cast<float*>(stream), len / (2 * sizeof(float)));
+	
+	if (!g_looping)
+		g_running &= !player->atEnd();
 }
 
 // ----------------------------------------------------------------------------
@@ -38,6 +39,7 @@ void usage()
 	"supported options:\n"
 	"  -h / --help             show this information and exit\n"
 	"  -q / --quiet            quiet (run non-interactively)\n"
+	"  -1 / --play-once        play only once and then exit\n"
 	"\n"
 	"  -n / --num <num>        set number of chips (default 1)\n"
 	"  -b / --buf <num>        set buffer size (default 4096)\n"
@@ -51,12 +53,13 @@ void usage()
 
 static const option options[] = 
 {
-	{"help",  0, nullptr, 'h'},
-	{"quiet", 0, nullptr, 'q'},
-	{"num",   1, nullptr, 'n'},
-	{"buf",   1, nullptr, 'b'},
-	{"gain",  1, nullptr, 'g'},
-	{"rate",  1, nullptr, 'r'},
+	{"help",      0, nullptr, 'h'},
+	{"quiet",     0, nullptr, 'q'},
+	{"play-once", 0, nullptr, '1'}, 
+	{"num",       1, nullptr, 'n'},
+	{"buf",       1, nullptr, 'b'},
+	{"gain",      1, nullptr, 'g'},
+	{"rate",      1, nullptr, 'r'},
 	{0}
 };
 
@@ -82,7 +85,7 @@ int main(int argc, char **argv)
 	int numChips = 1;
 
 	char opt;
-	while ((opt = getopt_long(argc, argv, ":hqn:b:g:r:", options, nullptr)) != -1)
+	while ((opt = getopt_long(argc, argv, ":hq1n:b:g:r:", options, nullptr)) != -1)
 	{
 		switch (opt)
 		{
@@ -93,6 +96,10 @@ int main(int argc, char **argv)
 		
 		case 'q':
 			interactive = false;
+			break;
+		
+		case '1':
+			g_looping = false;
 			break;
 		
 		case 'n':
@@ -170,6 +177,7 @@ int main(int argc, char **argv)
 	// TODO: make sure audio format is supported...
 	
 	// blah blah
+	player->setLoop(g_looping);
 	player->setSampleRate(have.freq);
 	player->setGain(gain);
 	SDL_PauseAudio(0);
@@ -210,10 +218,12 @@ int main(int argc, char **argv)
 			
 			case 'p':
 				g_paused ^= true;
+				SDL_PauseAudio(g_paused);
 				break;
 			
 			case 'r':
 				g_paused = false;
+				SDL_PauseAudio(0);
 				player->reset();
 				break;
 				

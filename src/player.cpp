@@ -77,7 +77,8 @@ void OPLPlayer::generate(float *data, unsigned numSamples)
 
 	while (numSamples)
 	{
-		while (!m_samplesLeft && m_sequence)
+		while (!m_samplesLeft && m_sequence
+		       && (m_looping || !atEnd()))
 		{	
 			// time to update midi playback
 			m_samplesLeft = m_sequence->update(*this);
@@ -231,6 +232,14 @@ void OPLPlayer::displayVoices()
 		
 		printf("\n");
 	}
+}
+
+// ----------------------------------------------------------------------------
+bool OPLPlayer::atEnd() const
+{
+	if (m_sequence)
+		return m_sequence->atEnd();
+	return true;
 }
 
 // ----------------------------------------------------------------------------

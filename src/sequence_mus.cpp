@@ -42,6 +42,8 @@ uint32_t SequenceMUS::update(OPLPlayer& player)
 {
 	uint8_t event, channel, data, param;
 	
+	m_atEnd = false;
+	
 	do
 	{
 		event = m_data[m_pos++];
@@ -107,8 +109,9 @@ uint32_t SequenceMUS::update(OPLPlayer& player)
 			break;
 		
 		case 6: // end of track
-			m_pos = 0;
-			continue;
+			reset();
+			m_atEnd = true;
+			return 0;
 		
 		case 7: // unused
 			m_pos++;

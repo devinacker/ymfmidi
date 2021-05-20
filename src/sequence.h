@@ -6,18 +6,25 @@
 class Sequence
 {
 public:
-	Sequence(FILE *file) {}
+	Sequence(FILE *file) { reset(); }
 	virtual ~Sequence();
 	
 	// load a sequence from the given path
 	static Sequence* load(const char *path);
 	
 	// reset track to beginning
-	virtual void reset() = 0;
+	virtual void reset() { m_atEnd = false; }
 	
 	// process and play any pending MIDI events
 	// returns the number of output audio samples until the next event(s)
 	virtual uint32_t update(OPLPlayer& player) = 0;
+	
+	// has this track reached the end?
+	// (this is true immediately after ending/looping, then becomes false after updating again)
+	bool atEnd() const { return m_atEnd; }
+	
+protected:
+	bool m_atEnd;
 };
 
 #endif // __SEQUENCE_H
