@@ -28,6 +28,9 @@ struct OPLPatch
 	
 	PatchVoice voice[2];
 	
+	// default names
+	static const char* names[256];
+	
 	static bool load(const char *path, OPLPatch (&patches)[256]);
 
 private:

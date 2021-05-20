@@ -58,9 +58,16 @@ bool OPLPatch::loadWOPL(FILE *file, OPLPatch (&patches)[256])
 		
 		OPLPatch &patch = patches[key];
 		
+		// clear patch data
+		patch = OPLPatch();
+		
 		// patch names
 		bytes[31] = '\0';
-		patch.name = (const char*)bytes;
+		if (bytes[0])
+			patch.name = (const char*)bytes;
+		else
+			patch.name = names[key];
+		
 		// patch global settings
 		patch.voice[0].tune     = (int8_t)bytes[33] - 12;
 		patch.voice[1].tune     = (int8_t)bytes[35] - 12;
@@ -111,8 +118,9 @@ bool OPLPatch::loadOP2(FILE *file, OPLPatch (&patches)[256])
 	for (int i = 0; i < 128+47; i++)
 	{
 		// patches 0-127 are melodic; the rest are for percussion notes 35 thru 81
-		OPLPatch &patch = (i < 128) ? patches[i] : patches[i + 35];
+		unsigned key = (i < 128) ? i : (i + 35);
 		
+		OPLPatch &patch = patches[key];
 		// clear patch data
 		patch = OPLPatch();
 		
@@ -161,8 +169,11 @@ bool OPLPatch::loadOP2(FILE *file, OPLPatch (&patches)[256])
 		// seek to patch name
 		fseek(file, (32*i) + (36*175) + 8, SEEK_SET);
 		fread(bytes, 1, 32, file);
-		bytes[32] = '\0';
-		patch.name = (const char*)bytes;
+		bytes[31] = '\0';
+		if (bytes[0])
+			patch.name = (const char*)bytes;
+		else
+			patch.name = names[key];
 		
 	//	printf("Read patch: %s\n", bytes);
 	}

@@ -468,14 +468,12 @@ void OPLPlayer::updateFrequency(OPLVoice& voice)
 // ----------------------------------------------------------------------------
 void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 {
-	if (!velocity)
-	{
-		midiNoteOff(channel, note);
-		return;
-	}
-
 	note &= 0x7f;
 	velocity &= 0x7f;
+
+	midiNoteOff(channel, note);
+	if (!velocity)
+		return;
 
 //	printf("midiNoteOn: chn %u, note %u\n", channel, note);
 	const OPLPatch *newPatch = findPatch(channel, note);
