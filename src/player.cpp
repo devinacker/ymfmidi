@@ -431,18 +431,34 @@ void OPLPlayer::updateFrequency(OPLVoice& voice)
 	
 	if (!voice.patch || !voice.channel) return;
 	
-	uint8_t note = ((voice.channel->num != 9) ? voice.note : voice.patch->fixedNote);
-	note += voice.patchVoice->tune;
-	uint8_t octave = (note / 12) & 7;
+	int note = ((voice.channel->num != 9) ? voice.note : voice.patch->fixedNote)
+	         + voice.patchVoice->tune;
+	
+	int octave = note / 12;
 	note %= 12;
 	
-	voice.freq = noteFreq[note];
+	// calculate base frequency (and apply pitch bend / patch detune)
+	unsigned freq = (note >= 0) ? noteFreq[note] : (noteFreq[note + 12] >> 1);
+	if (octave < 0)
+		freq >>= -octave;
+	else if (octave > 0)
+		freq <<= octave;
+	
 	const double detune = (voice.channel->pitch + voice.patchVoice->finetune);
 	if (detune > 0)
-		voice.freq += voice.freq * noteBendUp * detune;
+		freq += freq * noteBendUp * detune;
 	else if (detune < 0)
-		voice.freq += voice.freq * noteBendDown * detune;
-	voice.freq += (octave << 10);
+		freq += freq * noteBendDown * detune;
+	
+	// convert the calculated frequency back to a block and F-number
+	octave = 0;
+	while (freq > 0x3ff)
+	{
+		freq >>= 1;
+		octave++;
+	}
+	octave = std::min(7, octave);
+	voice.freq = freq | (octave << 10);
 	
 //	printf("voice.freq: %u\n", voice.freq);
 	write(voice.chip, REG_VOICE_FREQL + voice.num, voice.freq & 0xff);
