@@ -112,33 +112,80 @@ void OPLPlayer::generate(float *data, unsigned numSamples)
 }
 
 // ----------------------------------------------------------------------------
-void OPLPlayer::display()
+void OPLPlayer::displayClear()
+{
+	for (int i = 0; i < 18; i++)
+		printf("%79s\n", "");
+}
+
+// ----------------------------------------------------------------------------
+void OPLPlayer::displayChannels()
+{
+	unsigned numVoices[16] = {0};
+	unsigned totalVoices = 0;
+	for (auto& voice : m_voices)
+	{
+		if (voice.channel && (voice.on || voice.justChanged))
+		{
+			numVoices[voice.channel->num]++;
+			totalVoices++;
+		}
+	}
+	
+	printf("Chn | Patch Name                       | Vol | Pan | Active Voices: %u/%-6llu\n", totalVoices, m_voices.size());
+	printf("----+----------------------------------+-----+-----+---------------------------\n");
+	for (int i = 0; i < 16; i++)
+	{
+		const auto& channel = m_channels[i];
+	
+		printf("%3u | %-32s | %3u | %3u | ", i + 1, 
+			(i == 9) ? "Percussion" : findPatch(i, 0)->name.c_str(),
+			channel.volume, channel.pan);
+		
+		if (m_voices.size() < 100)
+		{
+			printf("%2u ", numVoices[i]);
+			for (int j = 0; j < 23; j++)
+				printf("%c", j < numVoices[i] ? '*' : ' ');
+		}
+		else
+		{
+			printf("%3u ", numVoices[i]);
+			for (int j = 0; j < 22; j++)
+				printf("%c", j < numVoices[i] ? '*' : ' ');
+		}
+		printf("\n");
+	}
+}
+
+// ----------------------------------------------------------------------------
+void OPLPlayer::displayVoices()
 {
 	for (int i = 0; i < 18; i++)
 	{
 		if (m_numChips == 1)
 		{
-			printf("voice %-2u: ", i + 1);
+			printf("voice %2u: ", i + 1);
 			if (m_voices[i].channel)
 			{
-				printf("channel %-2u, note %-3u %c %-32s\n",
+				printf("channel %2u, note %3u %c %-32s",
 					m_voices[i].channel->num + 1, m_voices[i].note,
 					m_voices[i].on ? '*' : ' ',
 					m_voices[i].patch ? m_voices[i].patch->name.c_str() : "");
 			}
 			else
 			{
-				printf("%69s\n", "");
+				printf("%69s", "");
 			}
 		}
 		else if (m_numChips == 2)
 		{
 			for (int j = i; j < m_voices.size(); j += 18)
 			{
-				printf("voice %-2u: ", j + 1);
+				printf("voice %2u: ", j + 1);
 				if (m_voices[j].channel)
 				{
-					printf("channel %-2u, note %-3u %c",
+					printf("channel %2u, note %3u %c",
 						m_voices[j].channel->num + 1, m_voices[j].note,
 						m_voices[j].on ? '*' : ' ');
 				}
@@ -150,16 +197,15 @@ void OPLPlayer::display()
 				if (j < 18)
 					printf("        | ");
 			}
-			printf("\n");
 		}
 		else if (m_numChips <= 4)
 		{
 			for (int j = i; j < m_voices.size(); j += 18)
 			{
-				printf("%-2u: ", j + 1);
+				printf("%2u: ", j + 1);
 				if (m_voices[j].channel)
 				{
-					printf("channel %-2u %c",
+					printf("channel %2u %c",
 						m_voices[j].channel->num + 1,
 						m_voices[j].on ? '*' : ' ');
 				}
@@ -171,19 +217,19 @@ void OPLPlayer::display()
 				if (j < m_voices.size() - 18)
 					printf(" | ");
 			}
-			printf("\n");
 		}
 		else if (m_numChips <= 8)
 		{
 			for (int j = i; j < m_voices.size(); j += 18)
 			{
-				printf("%-3u: %c ", j + 1, m_voices[j].on ? '*' : ' ');
+				printf("%3u: %c ", j + 1, m_voices[j].on ? '*' : ' ');
 				
 				if (j < m_voices.size() - 18)
 					printf(" | ");
 			}
-			printf("\n");
 		}
+		
+		printf("\n");
 	}
 }
 

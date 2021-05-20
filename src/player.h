@@ -72,7 +72,9 @@ public:
 	void generate(float *data, unsigned numSamples);
 	
 	// debug
-	void display();
+	void displayClear();
+	void displayChannels();
+	void displayVoices();
 	
 	// misc. informational stuff
 	uint32_t sampleRate() const { return m_sampleRate; }

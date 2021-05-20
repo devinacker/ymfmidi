@@ -72,6 +72,7 @@ int main(int argc, char **argv)
 	setbuf(stdout, NULL);
 	
 	bool interactive = true;
+	unsigned displayType = 0;
 	
 	const char* songPath;
 	const char* patchPath = "GENMIDI.wopl";
@@ -186,7 +187,7 @@ int main(int argc, char **argv)
 
 	if (interactive)
 	{
-		printf("\ncontrols: [p] pause, [r] restart, [esc/q] quit\n");
+		printf("\ncontrols: [p] pause, [r] restart, [tab] change view, [esc/q] quit\n");
 	}
 
 	while (g_running)
@@ -194,7 +195,12 @@ int main(int argc, char **argv)
 		if (interactive)
 		{
 			consolePos(5);
-			player->display();
+			
+			if (!displayType)
+				player->displayChannels();
+			else
+				player->displayVoices();
+			
 			switch (consoleGetKey())
 			{
 			case 0x1b:
@@ -210,9 +216,15 @@ int main(int argc, char **argv)
 				g_paused = false;
 				player->reset();
 				break;
+				
+			case 0x09:
+				displayType ^= 1;
+				consolePos(5);
+				player->displayClear();
+				break;
 			}
 		}
-		SDL_Delay(50);
+		SDL_Delay(30);
 	}
 
 	SDL_Quit();
