@@ -8,7 +8,7 @@ class MIDTrack;
 class SequenceMID : public Sequence
 {
 public:
-	SequenceMID(FILE *file);
+	SequenceMID(FILE *file, int offset = 0);
 	~SequenceMID();
 	
 	void reset();
@@ -16,7 +16,7 @@ public:
 	
 	void setUsecPerBeat(uint32_t usec);
 	
-	static bool isValid(FILE *file);
+	static bool isValid(FILE *file, int offset = 0);
 	
 private:
 	std::vector<MIDTrack*> m_tracks;

@@ -4,13 +4,12 @@
 #include "patches.h"
 
 // ----------------------------------------------------------------------------
-bool OPLPatch::load(const char *path, OPLPatch (&patches)[256])
+bool OPLPatch::load(const char *path, OPLPatch (&patches)[256], int offset)
 {
 	FILE *file = fopen(path, "rb");
 	if (!file) return false;
 
-	bool ok = loadWOPL(file, patches)
-	       || loadOP2(file, patches);
+	bool ok = load(file, patches, offset);
 	
 	fclose(file);
 	
@@ -18,11 +17,18 @@ bool OPLPatch::load(const char *path, OPLPatch (&patches)[256])
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPatch::loadWOPL(FILE *file, OPLPatch (&patches)[256])
+bool OPLPatch::load(FILE *file, OPLPatch (&patches)[256], int offset)
+{
+	return loadWOPL(file, patches, offset)
+	       || loadOP2(file, patches, offset);
+}
+
+// ----------------------------------------------------------------------------
+bool OPLPatch::loadWOPL(FILE *file, OPLPatch (&patches)[256], int offset)
 {
 	uint8_t bytes[66] = {0};
 	
-	fseek(file, 0, SEEK_SET);
+	fseek(file, offset, SEEK_SET);
 	fread(bytes, 1, 19, file);
 	if (strcmp((const char*)bytes, "WOPL3-BANK"))
 		return false;
@@ -38,7 +44,7 @@ bool OPLPatch::loadWOPL(FILE *file, OPLPatch (&patches)[256])
 	// currently not supported: global LFO flags, volume model options
 	
 	if (version >= 2) // skip bank names
-		fseek(file, 34 * (numMelody + numPerc), SEEK_CUR);
+		fseek(file, offset + 34 * (numMelody + numPerc), SEEK_CUR);
 	
 	const unsigned instSize = (version >= 3) ? 66 : 62;
 	
@@ -105,11 +111,11 @@ bool OPLPatch::loadWOPL(FILE *file, OPLPatch (&patches)[256])
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPatch::loadOP2(FILE *file, OPLPatch (&patches)[256])
+bool OPLPatch::loadOP2(FILE *file, OPLPatch (&patches)[256], int offset)
 {
 	uint8_t bytes[36] = {0};
 
-	fseek(file, 0, SEEK_SET);
+	fseek(file, offset, SEEK_SET);
 	fread(bytes, 1, 8, file);
 	if (strncmp((const char*)bytes, "#OPL_II#", 8))
 		return false;
@@ -125,7 +131,7 @@ bool OPLPatch::loadOP2(FILE *file, OPLPatch (&patches)[256])
 		patch = OPLPatch();
 		
 		// seek to patch data
-		fseek(file, (36*i) + 8, SEEK_SET);
+		fseek(file, offset + (36*i) + 8, SEEK_SET);
 		fread(bytes, 1, 36, file);
 		
 		// read the common data for both 2op voices
@@ -167,7 +173,7 @@ bool OPLPatch::loadOP2(FILE *file, OPLPatch (&patches)[256])
 		}
 		
 		// seek to patch name
-		fseek(file, (32*i) + (36*175) + 8, SEEK_SET);
+		fseek(file, offset + (32*i) + (36*175) + 8, SEEK_SET);
 		fread(bytes, 1, 32, file);
 		bytes[31] = '\0';
 		if (bytes[0])

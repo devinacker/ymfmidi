@@ -50,8 +50,12 @@ public:
 	void setLoop(bool loop) { m_looping = loop; }
 	void setSampleRate(uint32_t rate);
 	void setGain(double gain);
-	bool loadSequence(const char* path);
-	bool loadPatches(const char* path);
+	
+	bool loadSequence(const char* path, int offset = 0);
+	bool loadSequence(FILE *file, int offset = 0);
+	
+	bool loadPatches(const char* path, int offset = 0);
+	bool loadPatches(FILE *file, int offset = 0);
 	
 	void generate(float *data, unsigned numSamples);
 	void generate(int16_t *data, unsigned numSamples);

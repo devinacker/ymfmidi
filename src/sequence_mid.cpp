@@ -188,12 +188,12 @@ uint32_t MIDTrack::update(OPLPlayer& player)
 }
 
 // ----------------------------------------------------------------------------
-SequenceMID::SequenceMID(FILE *file)
+SequenceMID::SequenceMID(FILE *file, int offset)
 	: Sequence(file)
 {
 	uint8_t bytes[10] = {0};
 	
-	fseek(file, 4, SEEK_SET);
+	fseek(file, offset + 4, SEEK_SET);
 	fread(bytes, 1, 10, file);
 	
 	uint32_t len = READ_U32BE(bytes, 0);
@@ -202,7 +202,7 @@ SequenceMID::SequenceMID(FILE *file)
 	uint16_t numTracks = READ_U16BE(bytes, 6);
 	m_ticksPerBeat = READ_U16BE(bytes, 8);
 	
-	fseek(file, len + 8, SEEK_SET);
+	fseek(file, offset + len + 8, SEEK_SET);
 	
 	for (unsigned i = 0; i < numTracks; i++)
 	{
@@ -225,11 +225,11 @@ SequenceMID::~SequenceMID()
 }
 
 // ----------------------------------------------------------------------------
-bool SequenceMID::isValid(FILE *file)
+bool SequenceMID::isValid(FILE *file, int offset)
 {
 	uint8_t bytes[10] = {0};
 	
-	fseek(file, 0, SEEK_SET);
+	fseek(file, offset, SEEK_SET);
 	fread(bytes, 1, 10, file);
 	
 	if (memcmp(bytes, "MThd", 4))

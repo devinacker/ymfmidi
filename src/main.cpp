@@ -11,6 +11,8 @@ extern "C" {
 #include "console.h"
 #include "player.h"
 
+#define VERSION "0.1.0"
+
 static bool g_running = true;
 static bool g_paused = false;
 static bool g_looping = true;
@@ -22,7 +24,7 @@ static void mainLoopWAV(OPLPlayer* player, const char* path);
 void usage()
 {
 	fprintf(stderr, 
-	"usage: ymfm-test [options] song_path [patch_path]\n"
+	"usage: ymfmidi [options] song_path [patch_path]\n"
 	"\n"
 	"supported song formats:  MID, MUS\n"
 	"supported patch formats: WOPL, OP2\n"
@@ -75,6 +77,8 @@ int main(int argc, char **argv)
 	int bufferSize = 4096;
 	double gain = 1.0;
 	int numChips = 1;
+
+	printf("ymfmidi v" VERSION " - " __DATE__ "\n");
 
 	char opt;
 	while ((opt = getopt_long(argc, argv, ":hq1o:n:b:g:r:", options, nullptr)) != -1)

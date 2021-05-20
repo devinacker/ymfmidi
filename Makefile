@@ -2,7 +2,7 @@
 .SUFFIXES:
 #---------------------------------------------------------------------------------
 
-TARGET		:=	ymfm-test
+TARGET		:=	ymfmidi
 BUILD       :=  obj
 SOURCES		:=	src ymfm/src
 INCLUDES	:=	$(SOURCES) include

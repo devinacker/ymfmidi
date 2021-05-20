@@ -31,12 +31,13 @@ struct OPLPatch
 	// default names
 	static const char* names[256];
 	
-	static bool load(const char *path, OPLPatch (&patches)[256]);
+	static bool load(const char *path, OPLPatch (&patches)[256], int offset = 0);
+	static bool load(FILE *file, OPLPatch (&patches)[256], int offset = 0);
 
 private:
 	// individual format loaders
-	static bool loadWOPL(FILE *file, OPLPatch (&patches)[256]);
-	static bool loadOP2(FILE *file, OPLPatch (&patches)[256]);
+	static bool loadWOPL(FILE *file, OPLPatch (&patches)[256], int offset = 0);
+	static bool loadOP2(FILE *file, OPLPatch (&patches)[256], int offset = 0);
 };
 
 #endif // __PATCHES_H

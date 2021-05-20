@@ -57,18 +57,33 @@ void OPLPlayer::setGain(double gain)
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPlayer::loadSequence(const char* path)
+bool OPLPlayer::loadSequence(const char* path, int offset)
 {
 	delete m_sequence;
-	m_sequence = Sequence::load(path);
+	m_sequence = Sequence::load(path, offset);
 	
 	return m_sequence != nullptr;
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPlayer::loadPatches(const char* path)
+bool OPLPlayer::loadSequence(FILE *file, int offset)
 {
-	return OPLPatch::load(path, m_patches);
+	delete m_sequence;
+	m_sequence = Sequence::load(file, offset);
+	
+	return m_sequence != nullptr;
+}
+
+// ----------------------------------------------------------------------------
+bool OPLPlayer::loadPatches(const char* path, int offset)
+{
+	return OPLPatch::load(path, m_patches, offset);
+}
+
+// ----------------------------------------------------------------------------
+bool OPLPlayer::loadPatches(FILE *file, int offset)
+{
+	return OPLPatch::load(file, m_patches, offset);
 }
 
 // ----------------------------------------------------------------------------

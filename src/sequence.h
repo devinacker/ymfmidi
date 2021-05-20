@@ -9,8 +9,9 @@ public:
 	Sequence(FILE *file) { reset(); }
 	virtual ~Sequence();
 	
-	// load a sequence from the given path
-	static Sequence* load(const char *path);
+	// load a sequence from the given path/file
+	static Sequence* load(const char *path, int offset = 0);
+	static Sequence* load(FILE *path, int offset = 0);
 	
 	// reset track to beginning
 	virtual void reset() { m_atEnd = false; }
