@@ -15,17 +15,8 @@ static bool g_running = true;
 static bool g_paused = false;
 static bool g_looping = true;
 
-// ----------------------------------------------------------------------------
-static void audioCallback(void *data, uint8_t *stream, int len)
-{
-	memset(stream, 0, len);
-	
-	auto player = reinterpret_cast<OPLPlayer*>(data);
-	player->generate(reinterpret_cast<float*>(stream), len / (2 * sizeof(float)));
-	
-	if (!g_looping)
-		g_running &= !player->atEnd();
-}
+static void mainLoopSDL(OPLPlayer* player, int bufferSize, bool interactive);
+static void mainLoopWAV(OPLPlayer* player, const char* path);
 
 // ----------------------------------------------------------------------------
 void usage()
@@ -40,6 +31,7 @@ void usage()
 	"  -h / --help             show this information and exit\n"
 	"  -q / --quiet            quiet (run non-interactively)\n"
 	"  -1 / --play-once        play only once and then exit\n"
+	"  -o / --out <path>       output to WAV file (implies -q and -1)\n"
 	"\n"
 	"  -n / --num <num>        set number of chips (default 1)\n"
 	"  -b / --buf <num>        set buffer size (default 4096)\n"
@@ -75,17 +67,17 @@ int main(int argc, char **argv)
 	setbuf(stdout, NULL);
 	
 	bool interactive = true;
-	unsigned displayType = 0;
 	
 	const char* songPath;
 	const char* patchPath = "GENMIDI.wopl";
+	const char* wavPath = nullptr;
 	int sampleRate = 44100;
 	int bufferSize = 4096;
 	double gain = 1.0;
 	int numChips = 1;
 
 	char opt;
-	while ((opt = getopt_long(argc, argv, ":hq1n:b:g:r:", options, nullptr)) != -1)
+	while ((opt = getopt_long(argc, argv, ":hq1o:n:b:g:r:", options, nullptr)) != -1)
 	{
 		switch (opt)
 		{
@@ -100,6 +92,11 @@ int main(int argc, char **argv)
 		
 		case '1':
 			g_looping = false;
+			break;
+			
+		case 'o':
+			wavPath = optarg;
+			interactive = g_looping = false;
 			break;
 		
 		case 'n':
@@ -160,27 +157,9 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 	
-	// init SDL audio now
-	SDL_SetMainReady();
-	SDL_Init(SDL_INIT_AUDIO);
-	
-	SDL_AudioSpec want = {0};
-	SDL_AudioSpec have = {0};
-	
-	want.freq = sampleRate;
-	want.format = AUDIO_F32;
-	want.channels = 2;
-	want.samples = bufferSize;
-	want.callback = audioCallback;
-	want.userdata = player;
-	SDL_OpenAudio(&want, &have);
-	// TODO: make sure audio format is supported...
-	
-	// blah blah
 	player->setLoop(g_looping);
-	player->setSampleRate(have.freq);
+	player->setSampleRate(sampleRate);
 	player->setGain(gain);
-	SDL_PauseAudio(0);
 	
 	if (interactive)
 	{
@@ -193,11 +172,55 @@ int main(int argc, char **argv)
 
 	signal(SIGINT, quit);
 
+	if (wavPath)
+		mainLoopWAV(player, wavPath);
+	else
+		mainLoopSDL(player, bufferSize, interactive);
+	
+	delete player;
+	
+	return 0;
+}
+
+// ----------------------------------------------------------------------------
+static void audioCallback(void *data, uint8_t *stream, int len)
+{
+	memset(stream, 0, len);
+	
+	auto player = reinterpret_cast<OPLPlayer*>(data);
+	player->generate(reinterpret_cast<float*>(stream), len / (2 * sizeof(float)));
+	
+	if (!g_looping)
+		g_running &= !player->atEnd();
+}
+
+// ----------------------------------------------------------------------------
+static void mainLoopSDL(OPLPlayer *player, int bufferSize, bool interactive)
+{
+	// init SDL audio now
+	SDL_SetMainReady();
+	SDL_Init(SDL_INIT_AUDIO);
+	
+	SDL_AudioSpec want = {0};
+	SDL_AudioSpec have = {0};
+	
+	want.freq = player->sampleRate();
+	want.format = AUDIO_F32;
+	want.channels = 2;
+	want.samples = bufferSize;
+	want.callback = audioCallback;
+	want.userdata = player;
+	SDL_OpenAudio(&want, &have);
+	// TODO: make sure audio format is supported...
+	
 	if (interactive)
 	{
 		printf("\ncontrols: [p] pause, [r] restart, [tab] change view, [esc/q] quit\n");
 	}
 
+	SDL_PauseAudio(0);
+	
+	unsigned displayType = 0;
 	while (g_running)
 	{
 		if (interactive)
@@ -238,7 +261,97 @@ int main(int argc, char **argv)
 	}
 
 	SDL_Quit();
-	delete player;
+}
+
+// ----------------------------------------------------------------------------
+static void mainLoopWAV(OPLPlayer *player, const char *path)
+{
+	FILE *wav = fopen(path, "wb");
+	if (!wav)
+	{
+		fprintf(stderr, "couldn't open %s\n", path);
+		exit(1);
+	}
 	
-	return 0;
+	printf("rendering %s...\n", path);
+	
+	fseek(wav, 44, SEEK_SET);
+	
+	uint32_t numSamples = 0;
+	uint16_t samples[2];
+	char outSamples[4];
+	while (!player->atEnd())
+	{
+		player->generate(reinterpret_cast<int16_t*>(samples), 1);
+		outSamples[0] = samples[0];
+		outSamples[1] = samples[0] >> 8;
+		outSamples[2] = samples[1];
+		outSamples[3] = samples[1] >> 8;
+		
+		if (fwrite(outSamples, 1, 4, wav) != 4)
+		{
+			fprintf(stderr, "writing WAV data failed\n");
+			exit(1);
+		}
+		numSamples++;
+	}
+	
+	// fill in the rendered sample size and write the header
+	const uint32_t sampleRate = player->sampleRate();
+	const uint32_t byteRate = sampleRate * 4;
+	const uint32_t dataSize = numSamples * byteRate;
+	const uint32_t wavSize = dataSize + 36;
+	
+	char header[44] = {0};
+	
+	header[0] = 'R';
+	header[1] = 'I';
+	header[2] = 'F';
+	header[3] = 'F';
+	header[4] = (char)(wavSize);
+	header[5] = (char)(wavSize >> 8);
+	header[6] = (char)(wavSize >> 16);
+	header[7] = (char)(wavSize >> 24);
+	header[8]  = 'W';
+	header[9]  = 'A';
+	header[10] = 'V';
+	header[11] = 'E';
+	
+	// format chunk
+	header[12] = 'f';
+	header[13] = 'm';
+	header[14] = 't';
+	header[15] = ' ';
+	header[16] = 16; // chunk size
+	header[20] = 1;  // sample format (PCM)
+	header[22] = 2;  // stereo
+	header[24] = (char)(sampleRate);
+	header[25] = (char)(sampleRate >> 8);
+	header[26] = (char)(sampleRate >> 16);
+	header[27] = (char)(sampleRate >> 24);
+	header[28] = (char)(byteRate);
+	header[29] = (char)(byteRate >> 8);
+	header[30] = (char)(byteRate >> 16);
+	header[31] = (char)(byteRate >> 24);
+	header[32] = 4;  // bytes per sample
+	header[34] = 16; // bits per sample
+	
+	// data chunk
+	header[36] = 'd';
+	header[37] = 'a';
+	header[38] = 't';
+	header[39] = 'a';
+	header[40] = (char)(dataSize);
+	header[41] = (char)(dataSize >> 8);
+	header[42] = (char)(dataSize >> 16);
+	header[43] = (char)(dataSize >> 24);
+	
+	fseek(wav, 0, SEEK_SET);
+	if (fwrite(header, 1, sizeof(header), wav) != sizeof(header))
+	{
+		fprintf(stderr, "writing WAV header failed\n");
+		exit(1);
+	}
+	
+	fclose(wav);
 }

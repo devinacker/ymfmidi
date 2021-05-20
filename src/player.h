@@ -44,6 +44,40 @@ struct OPLVoice
 class OPLPlayer : public ymfm::ymfm_interface
 {
 public:
+	OPLPlayer(int numChips = 1);
+	virtual ~OPLPlayer();
+	
+	void setLoop(bool loop) { m_looping = loop; }
+	void setSampleRate(uint32_t rate);
+	void setGain(double gain);
+	bool loadSequence(const char* path);
+	bool loadPatches(const char* path);
+	
+	void generate(float *data, unsigned numSamples);
+	void generate(int16_t *data, unsigned numSamples);
+	
+	// reset OPL and midi file
+	void reset();
+	// reached end of song?
+	bool atEnd() const;
+	
+	// debug
+	void displayClear();
+	void displayChannels();
+	void displayVoices();
+	
+	// misc. informational stuff
+	uint32_t sampleRate() const { return m_sampleRate; }
+	const std::string& patchName(uint8_t num) { return m_patches[num].name; }
+	
+	// MIDI events, called by the file format handler
+	void midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity);
+	void midiNoteOff(uint8_t channel, uint8_t note);
+	void midiPitchControl(uint8_t channel, double pitch);
+	void midiProgramChange(uint8_t channel, uint8_t patchNum);
+	void midiControlChange(uint8_t channel, uint8_t control, uint8_t value);
+	
+private:
 	static const unsigned masterClock = 14318181;
 
 	enum {
@@ -61,38 +95,8 @@ public:
 		REG_NEW         = 0x105,
 	};
 
-	OPLPlayer(int numChips = 1);
-	virtual ~OPLPlayer();
-	
-	void setLoop(bool loop) { m_looping = loop; }
-	void setSampleRate(uint32_t rate);
-	void setGain(double gain);
-	bool loadSequence(const char* path);
-	bool loadPatches(const char* path);
-	
-	void generate(float *data, unsigned numSamples);
-	
-	// debug
-	void displayClear();
-	void displayChannels();
-	void displayVoices();
-	
-	// misc. informational stuff
-	bool atEnd() const;
-	uint32_t sampleRate() const { return m_sampleRate; }
-	const std::string& patchName(uint8_t num) { return m_patches[num].name; }
-	
-	// reset OPL and midi file
-	void reset();
-	
-	// MIDI events, called by the file format handler
-	void midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity);
-	void midiNoteOff(uint8_t channel, uint8_t note);
-	void midiPitchControl(uint8_t channel, double pitch);
-	void midiProgramChange(uint8_t channel, uint8_t patchNum);
-	void midiControlChange(uint8_t channel, uint8_t control, uint8_t value);
-	
-private:
+	void updateMIDI();
+
 	void write(ymfm::ymf262* chip, uint16_t addr, uint8_t data);
 	
 	// find a voice with the oldest note
@@ -121,7 +125,8 @@ private:
 	std::vector<ymfm::ymf262*> m_opl3;
 	unsigned m_numChips;
 	uint32_t m_sampleRate; // output sample rate (default 44.1k)
-	double m_sampleScale; // convert 16-bit samples to float
+	double m_sampleGain;
+	double m_sampleScale; // convert 16-bit samples to float (includes gain value)
 	double m_sampleStep; // ratio of OPL sample rate to output sample rate (usually < 1.0)
 	double m_samplePos; // number of pending output samples (when >= 1.0, output one)
 	uint32_t m_samplesLeft; // remaining samples until next midi event

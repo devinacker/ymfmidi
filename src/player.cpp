@@ -52,6 +52,7 @@ void OPLPlayer::setSampleRate(uint32_t rate)
 // ----------------------------------------------------------------------------
 void OPLPlayer::setGain(double gain)
 {
+	m_sampleGain = gain;
 	m_sampleScale = 32768.0 / gain;
 }
 
@@ -77,17 +78,7 @@ void OPLPlayer::generate(float *data, unsigned numSamples)
 
 	while (numSamples)
 	{
-		while (!m_samplesLeft && m_sequence
-		       && (m_looping || !atEnd()))
-		{	
-			// time to update midi playback
-			m_samplesLeft = m_sequence->update(*this);
-			for (auto& voice : m_voices)
-			{
-				voice.duration++;
-				voice.justChanged = false;
-			}
-		}
+		updateMIDI();
 	
 		while (m_samplePos < 1.0)
 		{
@@ -108,6 +99,58 @@ void OPLPlayer::generate(float *data, unsigned numSamples)
 			m_samplePos -= 1.0;
 			if (m_samplesLeft)
 				m_samplesLeft--;
+		}
+	}
+}
+
+// ----------------------------------------------------------------------------
+void OPLPlayer::generate(int16_t *data, unsigned numSamples)
+{
+	ymfm::ymf262::output_data output[m_numChips];
+
+	while (numSamples)
+	{
+		updateMIDI();
+	
+		while (m_samplePos < 1.0)
+		{
+			for (unsigned i = 0; i < m_numChips; i++)
+				m_opl3[i]->generate(&output[i]);
+			m_samplePos += m_sampleStep;
+		}
+		
+		while (m_samplePos >= 1.0 && numSamples > 0)
+		{
+			int32_t samples[2] = {0};
+		
+			for (unsigned i = 0; i < m_numChips; i++)
+			{
+				samples[0] += (int32_t)output[i].data[0] * m_sampleGain;
+				samples[1] += (int32_t)output[i].data[1] * m_sampleGain;
+			}
+			
+			*data++ = ymfm::clamp(samples[0], INT_MIN, INT_MAX);
+			*data++ = ymfm::clamp(samples[1], INT_MIN, INT_MAX);
+			numSamples--;
+			m_samplePos -= 1.0;
+			if (m_samplesLeft)
+				m_samplesLeft--;
+		}
+	}
+}
+
+// ----------------------------------------------------------------------------
+void OPLPlayer::updateMIDI()
+{
+	while (!m_samplesLeft && m_sequence
+	       && (m_looping || !atEnd()))
+	{	
+		// time to update midi playback
+		m_samplesLeft = m_sequence->update(*this);
+		for (auto& voice : m_voices)
+		{
+			voice.duration++;
+			voice.justChanged = false;
 		}
 	}
 }
