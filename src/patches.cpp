@@ -20,7 +20,8 @@ bool OPLPatch::load(const char *path, OPLPatch (&patches)[256], int offset)
 bool OPLPatch::load(FILE *file, OPLPatch (&patches)[256], int offset)
 {
 	return loadWOPL(file, patches, offset)
-	       || loadOP2(file, patches, offset);
+	    || loadOP2(file, patches, offset)
+	    || loadAIL(file, patches, offset);
 }
 
 // ----------------------------------------------------------------------------
@@ -29,7 +30,8 @@ bool OPLPatch::loadWOPL(FILE *file, OPLPatch (&patches)[256], int offset)
 	uint8_t bytes[66] = {0};
 	
 	fseek(file, offset, SEEK_SET);
-	fread(bytes, 1, 19, file);
+	if (fread(bytes, 1, 19, file) != 19)
+		return false;
 	if (strcmp((const char*)bytes, "WOPL3-BANK"))
 		return false;
 	
@@ -50,7 +52,8 @@ bool OPLPatch::loadWOPL(FILE *file, OPLPatch (&patches)[256], int offset)
 	
 	for (unsigned i = 0; i < 128 * (numMelody + numPerc); i++)
 	{
-		fread(bytes, 1, instSize, file);
+		if (fread(bytes, 1, instSize, file) != instSize)
+			return false;
 		
 		const unsigned bank = i >> 7;
 		unsigned key;
@@ -116,7 +119,8 @@ bool OPLPatch::loadOP2(FILE *file, OPLPatch (&patches)[256], int offset)
 	uint8_t bytes[36] = {0};
 
 	fseek(file, offset, SEEK_SET);
-	fread(bytes, 1, 8, file);
+	if (fread(bytes, 1, 8, file) != 8)
+		return false;
 	if (strncmp((const char*)bytes, "#OPL_II#", 8))
 		return false;
 
@@ -132,7 +136,8 @@ bool OPLPatch::loadOP2(FILE *file, OPLPatch (&patches)[256], int offset)
 		
 		// seek to patch data
 		fseek(file, offset + (36*i) + 8, SEEK_SET);
-		fread(bytes, 1, 36, file);
+		if (fread(bytes, 1, 36, file) != 36)
+			return false;
 		
 		// read the common data for both 2op voices
 		// flag bit 0 is "fixed pitch" (for drums), but it's seemingly only used for drum patches anyway, so ignore it?
@@ -174,15 +179,95 @@ bool OPLPatch::loadOP2(FILE *file, OPLPatch (&patches)[256], int offset)
 		
 		// seek to patch name
 		fseek(file, offset + (32*i) + (36*175) + 8, SEEK_SET);
-		fread(bytes, 1, 32, file);
-		bytes[31] = '\0';
-		if (bytes[0])
-			patch.name = (const char*)bytes;
+		if (fread(bytes, 1, 32, file) == 32)
+		{
+			bytes[31] = '\0';
+			if (bytes[0])
+				patch.name = (const char*)bytes;
+			else
+				patch.name = names[key];
+		}
 		else
+		{
 			patch.name = names[key];
-		
+		}
 	//	printf("Read patch: %s\n", bytes);
 	}
 	
 	return true;
+}
+
+// ----------------------------------------------------------------------------
+bool OPLPatch::loadAIL(FILE *file, OPLPatch (&patches)[256], int offset)
+{
+	fseek(file, offset, SEEK_SET);
+	
+	while (true)
+	{
+		uint16_t key;
+		uint8_t entry[6];
+		if (fread(entry, 1, 6, file) != 6)
+			return false;
+		if (entry[0] == 0xff && entry[1] == 0xff)
+			return true; // end of patches
+		else if (entry[1] == 0)
+			key = entry[0] & 0x7f;
+		else if (entry[1] == 0x7f)
+			key = entry[0] | 0x80;
+		else
+			continue; // additional melody banks currently not supported
+		
+		OPLPatch &patch = patches[key];
+		// clear patch data
+		patch = OPLPatch();
+		patch.name = names[key];
+		
+		unsigned currentPos = ftell(file);
+		uint32_t patchPos = entry[2] | (entry[3] << 8) | (entry[4] << 16) | (entry[5] << 24);
+		fseek(file, patchPos + offset, SEEK_SET);
+		
+		uint8_t bytes[0x19];
+		// try to read a 4op patch's worth of data, even if it is actually a 2op patch
+		// and only fail if we read less than we needed to
+		if (fread(bytes, 1, 0x19, file) < bytes[0])
+			return false;
+		
+		if (bytes[0] == 0x0e)
+			patch.fourOp = false;
+		else if (bytes[0] == 0x19)
+			patch.fourOp = true;
+		else
+			return false;
+		fseek(file, currentPos, SEEK_SET);
+		
+		patch.voice[0].tune = patch.voice[1].tune = (int8_t)bytes[2] - 12;
+		
+		unsigned pos = 3;
+		for (int i = 0; i < (patch.fourOp ? 2 : 1); i++)
+		{
+			PatchVoice &voice = patch.voice[i];
+			
+			for (int op = 0; op < 2; op++)
+			{
+				// operator mode
+				voice.op_mode[op] = bytes[pos++];
+				// KSR & output level
+				voice.op_ksr[op] = bytes[pos] & 0xc0;
+				voice.op_level[op] = bytes[pos++] & 0x3f;
+				// operator envelope
+				voice.op_ad[op] = bytes[pos++];
+				voice.op_sr[op] = bytes[pos++];
+				// operator waveform
+				voice.op_wave[op] = bytes[pos++];
+				
+				// feedback/connection (first op only)
+				if (op == 0)
+				{
+					patch.voice[0].conn = bytes[pos] & 0x0f;
+					patch.voice[1].conn = bytes[pos] >> 7;
+				}
+				pos++;
+			}
+		}
+	}
 }

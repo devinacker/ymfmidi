@@ -38,6 +38,7 @@ private:
 	// individual format loaders
 	static bool loadWOPL(FILE *file, OPLPatch (&patches)[256], int offset = 0);
 	static bool loadOP2(FILE *file, OPLPatch (&patches)[256], int offset = 0);
+	static bool loadAIL(FILE *file, OPLPatch (&patches)[256], int offset = 0);
 };
 
 #endif // __PATCHES_H
