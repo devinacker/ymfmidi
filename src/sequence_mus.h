@@ -17,6 +17,8 @@ private:
 	uint8_t m_data[1 << 16];
 	uint16_t m_pos;
 	uint8_t m_lastVol[16];
+	
+	void setDefaults();
 };
 
 #endif // __SEQUENCE_MUS_H

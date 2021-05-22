@@ -215,6 +215,8 @@ SequenceMID::SequenceMID(FILE *file, int offset)
 		len = READ_U32BE(bytes, 4);
 		m_tracks.push_back(new MIDTrack(file, len, this));
 	}
+	
+	setDefaults();
 }
 
 // ----------------------------------------------------------------------------
@@ -247,10 +249,17 @@ bool SequenceMID::isValid(FILE *file, int offset)
 // ----------------------------------------------------------------------------
 void SequenceMID::reset()
 {
-	setUsecPerBeat(500000);
+	Sequence::reset();
+	setDefaults();
 	
 	for (auto& track : m_tracks)
 		track->reset();
+}
+
+// ----------------------------------------------------------------------------
+void SequenceMID::setDefaults()
+{
+	setUsecPerBeat(500000);
 }
 
 // ----------------------------------------------------------------------------

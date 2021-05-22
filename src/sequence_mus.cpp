@@ -19,6 +19,7 @@ SequenceMUS::SequenceMUS(FILE *file, int offset)
 	fseek(file, offset + pos, SEEK_SET);
 	fread(m_data, 1, length, file);
 	
+	setDefaults();
 }
 
 // ----------------------------------------------------------------------------
@@ -32,6 +33,13 @@ bool SequenceMUS::isValid(FILE *file, int offset)
 
 // ----------------------------------------------------------------------------
 void SequenceMUS::reset()
+{
+	Sequence::reset();
+	setDefaults();
+}
+
+// ----------------------------------------------------------------------------
+void SequenceMUS::setDefaults()
 {
 	m_pos = 0;
 	memset(m_lastVol, 0x7f, sizeof(m_lastVol));
