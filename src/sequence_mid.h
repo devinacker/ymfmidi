@@ -19,6 +19,8 @@ public:
 	static bool isValid(FILE *file, int offset = 0);
 	
 private:
+	void setDefaults();
+
 	std::vector<MIDTrack*> m_tracks;
 	
 	uint16_t m_type;

@@ -6,7 +6,7 @@
 class Sequence
 {
 public:
-	Sequence(FILE *file) { reset(); }
+	Sequence(FILE *file) { m_atEnd = false; }
 	virtual ~Sequence();
 	
 	// load a sequence from the given path/file
