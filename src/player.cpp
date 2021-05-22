@@ -144,8 +144,8 @@ void OPLPlayer::generate(int16_t *data, unsigned numSamples)
 				samples[1] += (int32_t)output[i].data[1] * m_sampleGain;
 			}
 			
-			*data++ = ymfm::clamp(samples[0], INT_MIN, INT_MAX);
-			*data++ = ymfm::clamp(samples[1], INT_MIN, INT_MAX);
+			*data++ = ymfm::clamp(samples[0], -32768, 32767);
+			*data++ = ymfm::clamp(samples[1], -32768, 32767);
 			numSamples--;
 			m_samplePos -= 1.0;
 			if (m_samplesLeft)
