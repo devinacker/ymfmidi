@@ -241,6 +241,8 @@ bool OPLPatch::loadAIL(FILE *file, OPLPatch (&patches)[256], int offset)
 		fseek(file, currentPos, SEEK_SET);
 		
 		patch.voice[0].tune = patch.voice[1].tune = (int8_t)bytes[2] - 12;
+		patch.voice[0].conn = bytes[8] & 0x0f;
+		patch.voice[1].conn = bytes[8] >> 7;
 		
 		unsigned pos = 3;
 		for (int i = 0; i < (patch.fourOp ? 2 : 1); i++)
@@ -260,12 +262,7 @@ bool OPLPatch::loadAIL(FILE *file, OPLPatch (&patches)[256], int offset)
 				// operator waveform
 				voice.op_wave[op] = bytes[pos++];
 				
-				// feedback/connection (first op only)
-				if (op == 0)
-				{
-					patch.voice[0].conn = bytes[pos] & 0x0f;
-					patch.voice[1].conn = bytes[pos] >> 7;
-				}
+				// already handled the feedback/connection byte
 				pos++;
 			}
 		}
