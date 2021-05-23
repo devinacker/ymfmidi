@@ -151,7 +151,8 @@ void OPLPlayer::updateMIDI(ymfm::ymf262::output_data *output)
 		m_samplesLeft = m_sequence->update(*this);
 		for (auto& voice : m_voices)
 		{
-			voice.duration++;
+			if (voice.duration < UINT_MAX)
+				voice.duration++;
 			voice.justChanged = false;
 		}
 	}
@@ -647,6 +648,7 @@ void OPLPlayer::silenceVoice(OPLVoice& voice)
 	
 	voice.on = false;
 	voice.justChanged = true;
+	voice.duration = UINT_MAX;
 	
 	write(voice.chip, REG_OP_LEVEL + voice.op,     0xff);
 	write(voice.chip, REG_OP_LEVEL + voice.op + 3, 0xff);
@@ -679,6 +681,12 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 		else
 			voice = findVoice(newPatch->fourOp);
 		if (!voice) continue; // ??
+		
+		if (voice->on)
+		{
+			silenceVoice(*voice);
+			runOneSample(voice->chip);
+		}
 		
 		// update the note parameters for this voice
 		voice->channel = &m_channels[channel & 15];
