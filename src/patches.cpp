@@ -21,7 +21,8 @@ bool OPLPatch::load(FILE *file, OPLPatch (&patches)[256], int offset)
 {
 	return loadWOPL(file, patches, offset)
 	    || loadOP2(file, patches, offset)
-	    || loadAIL(file, patches, offset);
+	    || loadAIL(file, patches, offset)
+	    || loadTMB(file, patches, offset);
 }
 
 // ----------------------------------------------------------------------------
@@ -268,4 +269,46 @@ bool OPLPatch::loadAIL(FILE *file, OPLPatch (&patches)[256], int offset)
 			}
 		}
 	}
+}
+
+// ----------------------------------------------------------------------------
+bool OPLPatch::loadTMB(FILE *file, OPLPatch (&patches)[256], int offset)
+{
+	fseek(file, offset, SEEK_SET);
+	
+	for (uint16_t key = 0; key < 256; key++)
+	{
+		OPLPatch &patch = patches[key];
+		// clear patch data
+		patch = OPLPatch();
+		patch.name = names[key];
+		
+		uint8_t bytes[13];
+		if (fread(bytes, 1, 13, file) != 13)
+			return false;
+		
+		// since this format has no identifying info, we can only really reject it
+		// if it has invalid values in a few spots
+		if ((bytes[8] | bytes[9] | bytes[10]) & 0xf0)
+			return false;
+		
+		PatchVoice &voice = patch.voice[0];
+		voice.op_mode[0]  = bytes[0];
+		voice.op_mode[1]  = bytes[1];
+		voice.op_ksr[0]   = bytes[2] & 0xc0;
+		voice.op_level[0] = bytes[2] & 0x3f;
+		voice.op_ksr[1]   = bytes[3] & 0xc0;
+		voice.op_level[1] = bytes[3] & 0x3f;
+		voice.op_ad[0]    = bytes[4];
+		voice.op_ad[1]    = bytes[5];
+		voice.op_sr[0]    = bytes[6];
+		voice.op_sr[1]    = bytes[7];
+		voice.op_wave[0]  = bytes[8];
+		voice.op_wave[1]  = bytes[9];
+		voice.conn        = bytes[10];
+		voice.tune        = (int8_t)bytes[11] - 12;
+		patch.velocity    = (int8_t)bytes[12];
+	}
+	
+	return true;
 }
