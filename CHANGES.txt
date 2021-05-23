@@ -1,0 +1,9 @@
+v0.2.0 [2021-05-23]
+- Added support for 4-operator instrument patches
+- Added support for .ad/.opl (Miles/AIL) and .tmb (Apogee) bank formats
+- Slight improvements to voice/channel management
+- Fixed clamping of 16-bit output samples when using multiple chips
+- Fixed possible issue w/ playback not starting correctly without being manually restarted
+  
+v0.1.0 [2021-05-20]
+- Initial release

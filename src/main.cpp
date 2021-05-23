@@ -11,7 +11,7 @@ extern "C" {
 #include "console.h"
 #include "player.h"
 
-#define VERSION "0.1.0"
+#define VERSION "0.2.0"
 
 static bool g_running = true;
 static bool g_paused = false;
@@ -27,7 +27,7 @@ void usage()
 	"usage: ymfmidi [options] song_path [patch_path]\n"
 	"\n"
 	"supported song formats:  MID, MUS\n"
-	"supported patch formats: WOPL, OP2\n"
+	"supported patch formats: AD, OPL, OP2, TMB, WOPL\n"
 	"\n"
 	"supported options:\n"
 	"  -h / --help             show this information and exit\n"

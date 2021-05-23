@@ -6,20 +6,22 @@ ymfmidi is a MIDI player based on the OPL3 emulation core from [ymfm](https://gi
 
 ### Features
 
+* Supports both 4-operator and 2-operator instruments
 * Can emulate multiple chips at once to increase polyphony
 * Can output to WAV files
 * Supported sequence formats:
     * `.mid` Standard MIDI files (format 0 or 1)
     * `.mus` DMX sound system / Doom engine
 * Supported instrument patch formats:
-    * `.wopl` Wohlstand OPL3 editor
+    * `.ad`, `.opl` Miles Sound System / Audio Interface Library
     * `.op2` DMX sound system / Doom engine
+    * `.tmb` Apogee Sound System
+    * `.wopl` Wohlstand OPL3 editor
 
 May be supported in the future:
 
 * More sequence and instrument file formats
 * Some Roland GS and Yamaha XG features (e.g. additional instrument banks, multiple percussion channels)
-* True 4-operator instruments (currently only supported in "pair of 2-op voices" mode)
 
 # Usage
 
