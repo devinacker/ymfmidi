@@ -643,8 +643,9 @@ void OPLPlayer::updateFrequency(OPLVoice& voice)
 // ----------------------------------------------------------------------------
 void OPLPlayer::silenceVoice(OPLVoice& voice)
 {
-	voice.channel = nullptr;
-	voice.patch   = nullptr;
+	voice.channel    = nullptr;
+	voice.patch      = nullptr;
+	voice.patchVoice = nullptr;
 	
 	voice.on = false;
 	voice.justChanged = true;
