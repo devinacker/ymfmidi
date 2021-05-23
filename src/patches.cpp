@@ -83,8 +83,8 @@ bool OPLPatch::loadWOPL(FILE *file, OPLPatch (&patches)[256], int offset)
 		patch.velocity          = (int8_t)bytes[36];
 		patch.voice[1].finetune = (int8_t)bytes[37] / 128.0;
 		patch.fixedNote         = bytes[38];
-		patch.fourOp            = bytes[39] & 1;
-		patch.dualTwoOp         = bytes[39] & 2;
+		patch.fourOp            = (bytes[39] & 3) == 1;
+		patch.dualTwoOp         = (bytes[39] & 3) == 3;
 		// ignore other data for this patch if it's a blank instrument
 		// *or* if one of the rhythm mode bits is set (not supported here)
 		if (bytes[39] & 0x3c)
@@ -141,7 +141,7 @@ bool OPLPatch::loadOP2(FILE *file, OPLPatch (&patches)[256], int offset)
 		
 		// read the common data for both 2op voices
 		// flag bit 0 is "fixed pitch" (for drums), but it's seemingly only used for drum patches anyway, so ignore it?
-		patch.fourOp = patch.dualTwoOp = (bytes[0] & 4);
+		patch.dualTwoOp = (bytes[0] & 4);
 		// second voice detune
 		patch.voice[1].finetune = (bytes[2] / 128.0) - 1.0;
 	
@@ -263,7 +263,8 @@ bool OPLPatch::loadAIL(FILE *file, OPLPatch (&patches)[256], int offset)
 				voice.op_wave[op] = bytes[pos++];
 				
 				// already handled the feedback/connection byte
-				pos++;
+				if (op == 0)
+					pos++;
 			}
 		}
 	}

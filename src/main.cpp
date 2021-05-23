@@ -78,7 +78,7 @@ int main(int argc, char **argv)
 	double gain = 1.0;
 	int numChips = 1;
 
-	printf("ymfmidi v" VERSION " - " __DATE__ "\n");
+//	printf("ymfmidi v" VERSION " - " __DATE__ "\n");
 
 	char opt;
 	while ((opt = getopt_long(argc, argv, ":hq1o:n:b:g:r:", options, nullptr)) != -1)

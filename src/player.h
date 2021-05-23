@@ -3,6 +3,7 @@
 
 #include <ymfm_opl.h>
 #include <climits>
+#include <queue>
 #include <vector>
 
 #include "patches.h"
@@ -21,13 +22,15 @@ struct MIDIChannel
 
 struct OPLVoice
 {
-	ymfm::ymf262 *chip = nullptr;
+	int chip = 0;
 	const MIDIChannel *channel = nullptr;
 	const OPLPatch *patch = nullptr;
 	const PatchVoice *patchVoice = nullptr;
 	
 	uint16_t num = 0;
 	uint16_t op = 0; // base operator number, set based on voice num.
+	bool fourOpPrimary = false;
+	OPLVoice *fourOpOther = nullptr;
 	
 	bool on = false;
 	bool justChanged = false; // true after note on/off, false after generating at least 1 sample
@@ -96,17 +99,20 @@ private:
 		REG_VOICE_CNT   = 0xC0,
 		REG_OP_WAVEFORM = 0xE0,
 		
+		REG_4OP         = 0x104,
 		REG_NEW         = 0x105,
 	};
 
-	void updateMIDI();
+	void updateMIDI(ymfm::ymf262::output_data *output);
 
-	void write(ymfm::ymf262* chip, uint16_t addr, uint8_t data);
+	void runOneSample(int chip);
+
+	void write(int chip, uint16_t addr, uint8_t data);
 	
 	// find a voice with the oldest note
-	OPLVoice* findVoice();
+	OPLVoice* findVoice(bool fourOpOnly = false);
 	// find a voice that's playing a specific note on a specific channel
-	OPLVoice* findVoice(uint8_t channel, uint8_t note, bool on);
+	OPLVoice* findVoice(uint8_t channel, uint8_t note);
 
 	// find the patch to use for a specific MIDI channel and note
 	const OPLPatch* findPatch(uint8_t channel, uint8_t note) const;
@@ -126,14 +132,21 @@ private:
 	// update the block and F-number for a voice (also key on/off)
 	void updateFrequency(OPLVoice& voice);
 
+	// silence a voice immediately
+	void silenceVoice(OPLVoice& voice);
+
 	std::vector<ymfm::ymf262*> m_opl3;
 	unsigned m_numChips;
+	
 	uint32_t m_sampleRate; // output sample rate (default 44.1k)
 	double m_sampleGain;
 	double m_sampleScale; // convert 16-bit samples to float (includes gain value)
 	double m_sampleStep; // ratio of OPL sample rate to output sample rate (usually < 1.0)
 	double m_samplePos; // number of pending output samples (when >= 1.0, output one)
 	uint32_t m_samplesLeft; // remaining samples until next midi event
+	// if we need to clock one of the OPLs between register writes, save the resulting sample
+	std::vector<std::queue<ymfm::ymf262::output_data>> m_sampleFIFO;
+	
 	bool m_looping;
 	
 	MIDIChannel m_channels[16];

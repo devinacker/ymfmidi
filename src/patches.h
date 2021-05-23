@@ -21,8 +21,8 @@ struct PatchVoice
 struct OPLPatch
 {
 	std::string name;
-	bool fourOp = false;
-	bool dualTwoOp = false; // only valid if fourOp = true
+	bool fourOp = false; // true 4op
+	bool dualTwoOp = false; // only valid if fourOp = false
 	uint8_t fixedNote = 0;
 	int8_t velocity = 0; // MIDI velocity offset
 	
