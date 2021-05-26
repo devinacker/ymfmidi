@@ -88,7 +88,6 @@ uint32_t MIDTrack::update(OPLPlayer& player)
 	{
 		m_initDelay = false;
 		m_delay = readVLQ();
-		return m_delay;
 	}
 	
 	while (m_delay <= 0)
@@ -102,7 +101,7 @@ uint32_t MIDTrack::update(OPLPlayer& player)
 		if (m_size - m_pos < 3)
 		{
 			m_atEnd = true;
-			return 0;
+			return UINT_MAX;
 		}
 		
 		data[0] = m_data[m_pos++];
@@ -158,7 +157,7 @@ uint32_t MIDTrack::update(OPLPlayer& player)
 				else
 				{
 					m_atEnd = true;
-					return 0;
+					return UINT_MAX;
 				}
 				break;
 			}
@@ -169,7 +168,7 @@ uint32_t MIDTrack::update(OPLPlayer& player)
 			if (data[0] == 0x2F || (m_pos + len >= m_size))
 			{
 				m_atEnd = true;
-				return 0;
+				return UINT_MAX;
 			}
 			// tempo change
 			if (data[0] == 0x51)
@@ -291,7 +290,8 @@ uint32_t SequenceMID::update(OPLPlayer& player)
 	{
 		for (auto track : m_tracks)
 		{
-			tickDelay = std::min(tickDelay, track->update(player));
+			if (!track->atEnd())
+				tickDelay = std::min(tickDelay, track->update(player));
 			tracksAtEnd &= track->atEnd();
 		}
 	}
