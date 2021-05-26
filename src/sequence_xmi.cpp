@@ -20,7 +20,8 @@ public:
 	bool atEnd() const { return m_atEnd; }
 	
 private:
-	int32_t readVLQ();
+	uint32_t readVLQ();
+	uint32_t readDelay();
 	int32_t minDelay();
 
 	SequenceXMI *m_sequence;
@@ -35,7 +36,6 @@ private:
 		int32_t delay;
 	};
 	std::vector<XMINote> m_notes;
-	std::vector<XMINote> m_newNotes;
 };
 
 // ----------------------------------------------------------------------------
@@ -76,25 +76,41 @@ void XMITrack::advance(uint32_t time)
 }
 
 // ----------------------------------------------------------------------------
-int32_t XMITrack::readVLQ()
+uint32_t XMITrack::readVLQ()
 {
-	int32_t vlq = 0;
+	uint32_t vlq = 0;
+	uint8_t data = 0;
+
+	do
+	{
+		data = m_data[m_pos++];
+		vlq <<= 7;
+		vlq |= (data & 0x7f);
+	} while ((data & 0x80) && (m_pos < m_size));
+	
+	return vlq;
+}
+
+// ----------------------------------------------------------------------------
+uint32_t XMITrack::readDelay()
+{
+	uint32_t delay = 0;
 	uint8_t data = 0;
 
 	if (m_pos >= m_size || (m_data[m_pos] & 0x80))
-		return -1;
+		return 0;
 
 	do
 	{
 		data = m_data[m_pos];
 		if (!(data & 0x80))
 		{
-			vlq += data;
+			delay += data;
 			m_pos++;
 		}
 	} while ((data == 0x7f) && (m_pos < m_size));
 	
-	return vlq;
+	return delay;
 }
 
 // ----------------------------------------------------------------------------
@@ -143,45 +159,14 @@ uint32_t XMITrack::update(OPLPlayer& player)
 		channel = status & 15;
 		switch (status >> 4)
 		{
-		case 8: // note off
-			player.midiNoteOff(channel, data[0]);
-			break;
-		
 		case 9: // note on
-			// turn off any past notes that played with no explicit delay
-			// (not counting other ones in m_newNotes that haven't been delayed at all yet)
-			for (int i = 0; i < m_notes.size();)
-			{
-				if (m_notes[i].channel == channel && m_notes[i].delay == INT_MAX)
-				{
-					player.midiNoteOff(m_notes[i].channel, m_notes[i].note);
-					m_notes[i] = m_notes.back();
-					m_notes.pop_back();
-				}	
-				else
-					i++;
-			}
+			data[1] = m_data[m_pos++];
+			player.midiNoteOn(channel, data[0], data[1]);
 			
 			note.channel = channel;
 			note.note    = data[0];
-			if (m_data[m_pos] & 0x80)
-			{
-				// if no velocity was specified, play note at full(?) velocity indefinitely
-				data[1] = 0x7f;
-				note.delay = INT_MAX;
-			}
-			else
-			{
-				data[1] = m_data[m_pos++];
-				note.delay = readVLQ();
-				if (note.delay < 0)
-					// if no delay was specified, play until a delay has elapsed and more notes are played)
-					// (TODO: should this use a shorter delay sometimes?
-					note.delay = INT_MAX;
-			}
-			
-			player.midiNoteOn(channel, data[0], data[1]);
-			m_newNotes.push_back(note);
+			note.delay   = readVLQ();
+			m_notes.push_back(note);
 			break;
 		
 		case 10: // polyphonic pressure (ignored)
@@ -242,12 +227,8 @@ uint32_t XMITrack::update(OPLPlayer& player)
 			break;
 		}
 		
-		m_delay = readVLQ();
+		m_delay = readDelay();
 	}
-	
-	for (auto& note : m_newNotes)
-		m_notes.push_back(note);
-	m_newNotes.clear();
 	
 	return minDelay();
 }
