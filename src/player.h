@@ -114,7 +114,8 @@ private:
 	void write(int chip, uint16_t addr, uint8_t data);
 	
 	// find a voice with the oldest note
-	OPLVoice* findVoice(bool fourOpOnly = false);
+	// if no "off" voices are found, steal one using the same patch or MIDI channel
+	OPLVoice* findVoice(uint8_t channel, const OPLPatch *patch);
 	// find a voice that's playing a specific note on a specific channel
 	OPLVoice* findVoice(uint8_t channel, uint8_t note, bool justChanged = false);
 

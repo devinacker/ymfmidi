@@ -409,7 +409,7 @@ void OPLPlayer::write(int chip, uint16_t addr, uint8_t data)
 }
 
 // ----------------------------------------------------------------------------
-OPLVoice* OPLPlayer::findVoice(bool fourOpOnly)
+OPLVoice* OPLPlayer::findVoice(uint8_t channel, const OPLPatch *patch)
 {
 	OPLVoice *found = nullptr;
 	uint32_t duration = 0;
@@ -418,7 +418,7 @@ OPLVoice* OPLPlayer::findVoice(bool fourOpOnly)
 	// (or voices that haven't ever been used yet)
 	for (auto& voice : m_voices)
 	{
-		if (fourOpOnly && !voice.fourOpPrimary)
+		if (patch->fourOp && !voice.fourOpPrimary)
 			continue;
 	
 		if (!voice.channel)
@@ -434,14 +434,30 @@ OPLVoice* OPLPlayer::findVoice(bool fourOpOnly)
 	
 	if (found) return found;
 	// if we didn't find one yet, just try to find an old one
-	// even if it should still be playing.
+	// using the same channel and/or patch, even if it should still be playing.
 	
 	for (auto& voice : m_voices)
 	{
-		if (fourOpOnly && !voice.fourOpPrimary)
+		if (patch->fourOp && !voice.fourOpPrimary)
+			continue;
+		
+		if ((voice.channel->num == channel || voice.patch == patch)
+		    && voice.duration > duration)
+		{
+			found = &voice;
+			duration = voice.duration;
+		}
+	}
+	
+	if (found) return found;
+	// last resort - just find any old voice at all
+	
+		for (auto& voice : m_voices)
+	{
+		if (patch->fourOp && !voice.fourOpPrimary)
 			continue;
 		// don't let a 2op instrument steal an active voice from a 4op one
-		if (!fourOpOnly && voice.on && voice.patch->fourOp)
+		if (!patch->fourOp && voice.on && voice.patch->fourOp)
 			continue;
 		
 		if (voice.duration > duration)
@@ -719,7 +735,7 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 		if (voice && newPatch->fourOp && voice->fourOpOther)
 			voice = voice->fourOpOther;
 		else
-			voice = findVoice(newPatch->fourOp);
+			voice = findVoice(channel, newPatch);
 		if (!voice) continue; // ??
 		
 		if (voice->on)
