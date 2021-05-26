@@ -69,7 +69,16 @@ int consoleGetKey()
 
 #ifdef _WIN32
 	while (kbhit())
+	{
 		key = getch();
+		if (key == 0xe0)
+			key = -getch();
+	}
+	
+	if      (key == -'H') key = -'A'; // cursor up
+	else if (key == -'P') key = -'B'; // cursor down
+	else if (key == -'M') key = -'C'; // cursor right
+	else if (key == -'K') key = -'D'; // cursor left
 #else
 	static timeval timeout = {0};
 	fd_set readfds;
@@ -79,8 +88,16 @@ int consoleGetKey()
 
 	while (select(1, &readfds, nullptr, nullptr, &timeout) > 0
 	       && FD_ISSET(0, &readfds))
+	{
 		key = getc(stdin);
+		if (key == 0x1b)
+		{
+			getc(stdin);
+			key = -getc(stdin);
+		}
+	}
 #endif
+
 	return key;
 }
 

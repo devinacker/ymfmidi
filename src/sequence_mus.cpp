@@ -7,18 +7,18 @@
 SequenceMUS::SequenceMUS(FILE *file, int offset)
 	: Sequence(file)
 {
+	memset(m_data, 0xFF, sizeof(m_data));
 	uint8_t header[4] = {0};
 	
 	fseek(file, offset + 4, SEEK_SET);
-	fread(header, 1, 4, file);
-	
-	uint16_t length = header[0] | (header[1] << 8);
-	uint16_t pos    = header[2] | (header[3] << 8);
-	
-	memset(m_data, 0xFF, sizeof(m_data));
-	fseek(file, offset + pos, SEEK_SET);
-	fread(m_data, 1, length, file);
-	
+	if (fread(header, 1, 4, file) == 4)
+	{
+		uint16_t length = header[0] | (header[1] << 8);
+		uint16_t pos    = header[2] | (header[3] << 8);
+		
+		fseek(file, offset + pos, SEEK_SET);
+		(void)fread(m_data, 1, length, file);
+	}
 	setDefaults();
 }
 
@@ -27,7 +27,8 @@ bool SequenceMUS::isValid(FILE *file, int offset)
 {
 	uint8_t bytes[4];
 	fseek(file, offset, SEEK_SET);
-	fread(bytes, 1, 4, file);
+	if (fread(bytes, 1, 4, file) != 4)
+		return false;
 	return !memcmp(bytes, "MUS\x1a", 4);
 }
 

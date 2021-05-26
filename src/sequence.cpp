@@ -3,6 +3,7 @@
 #include "sequence.h"
 #include "sequence_mid.h"
 #include "sequence_mus.h"
+#include "sequence_xmi.h"
 
 // ----------------------------------------------------------------------------
 Sequence::~Sequence() {}
@@ -26,6 +27,8 @@ Sequence* Sequence::load(FILE *file, int offset)
 		return new SequenceMUS(file, offset);
 	else if (SequenceMID::isValid(file, offset))
 		return new SequenceMID(file, offset);
+	else if (SequenceXMI::isValid(file, offset))
+		return new SequenceXMI(file, offset);
 	
 	return nullptr;
 }

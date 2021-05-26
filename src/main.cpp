@@ -33,6 +33,8 @@ void usage()
 	"  -h / --help             show this information and exit\n"
 	"  -q / --quiet            quiet (run non-interactively)\n"
 	"  -1 / --play-once        play only once and then exit\n"
+	"  -s / --song <num>       select an individual song, if multiple in file\n"
+	"                            (default 1)\n"
 	"  -o / --out <path>       output to WAV file (implies -q and -1)\n"
 	"\n"
 	"  -n / --num <num>        set number of chips (default 1)\n"
@@ -50,6 +52,7 @@ static const option options[] =
 	{"help",      0, nullptr, 'h'},
 	{"quiet",     0, nullptr, 'q'},
 	{"play-once", 0, nullptr, '1'}, 
+	{"song",      1, nullptr, 's'}, 
 	{"num",       1, nullptr, 'n'},
 	{"buf",       1, nullptr, 'b'},
 	{"gain",      1, nullptr, 'g'},
@@ -61,6 +64,17 @@ static const option options[] =
 void quit(int)
 {
 	g_running = false;
+}
+
+// ----------------------------------------------------------------------------
+const char* shortPath(const char* path)
+{
+	const char* p;
+	if ((p = strrchr(path, '\\'))
+	    || (p = strrchr(path, '/')))
+		return p + 1;
+	
+	return path;
 }
 
 // ----------------------------------------------------------------------------
@@ -77,11 +91,12 @@ int main(int argc, char **argv)
 	int bufferSize = 4096;
 	double gain = 1.0;
 	int numChips = 1;
+	unsigned songNum = 0;
 
 //	printf("ymfmidi v" VERSION " - " __DATE__ "\n");
 
 	char opt;
-	while ((opt = getopt_long(argc, argv, ":hq1o:n:b:g:r:", options, nullptr)) != -1)
+	while ((opt = getopt_long(argc, argv, ":hq1s:o:n:b:g:r:", options, nullptr)) != -1)
 	{
 		switch (opt)
 		{
@@ -97,7 +112,11 @@ int main(int argc, char **argv)
 		case '1':
 			g_looping = false;
 			break;
-			
+		
+		case 's':
+			songNum = atoi(optarg);
+			break;
+		
 		case 'o':
 			wavPath = optarg;
 			interactive = g_looping = false;
@@ -110,6 +129,7 @@ int main(int argc, char **argv)
 				fprintf(stderr, "number of chips must be at least 1\n");
 				exit(1);
 			}
+			break;
 		
 		case 'b':
 			bufferSize = atoi(optarg);
@@ -164,6 +184,8 @@ int main(int argc, char **argv)
 	player->setLoop(g_looping);
 	player->setSampleRate(sampleRate);
 	player->setGain(gain);
+	if (songNum > 0)
+		player->setSongNum(songNum - 1);
 	
 	if (interactive)
 	{
@@ -171,8 +193,8 @@ int main(int argc, char **argv)
 		consolePos(0);
 	}
 	
-	printf("song:    %s\n", songPath);
-	printf("patches: %s\n", patchPath);
+	printf("song: %-30s   | patches: %-30s\n",
+		shortPath(songPath), shortPath(patchPath));
 
 	signal(SIGINT, quit);
 
@@ -219,6 +241,7 @@ static void mainLoopSDL(OPLPlayer *player, int bufferSize, bool interactive)
 	
 	if (interactive)
 	{
+		consolePos(2);
 		printf("\ncontrols: [p] pause, [r] restart, [tab] change view, [esc/q] quit\n");
 	}
 
@@ -229,8 +252,14 @@ static void mainLoopSDL(OPLPlayer *player, int bufferSize, bool interactive)
 	{
 		if (interactive)
 		{
-			consolePos(5);
+			if (player->numSongs() > 1)
+			{
+				consolePos(1);
+				printf("part %3u/%-3u (use left/right to change)\n",
+					player->songNum() + 1, player->numSongs());
+			}
 			
+			consolePos(5);
 			if (!displayType)
 				player->displayChannels();
 			else
@@ -241,6 +270,7 @@ static void mainLoopSDL(OPLPlayer *player, int bufferSize, bool interactive)
 			case 0x1b:
 			case 'q':
 				g_running = false;
+				SDL_PauseAudio(1);
 				continue;
 			
 			case 'p':
@@ -258,6 +288,16 @@ static void mainLoopSDL(OPLPlayer *player, int bufferSize, bool interactive)
 				displayType ^= 1;
 				consolePos(5);
 				player->displayClear();
+				break;
+			
+			case -'D':
+				if (player->songNum() > 0)
+					player->setSongNum(player->songNum() - 1);
+				break;
+
+			case -'C':
+				if (player->songNum() < player->numSongs() - 1)
+					player->setSongNum(player->songNum() + 1);
 				break;
 			}
 		}

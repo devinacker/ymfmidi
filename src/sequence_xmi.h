@@ -1,15 +1,15 @@
-#ifndef __SEQUENCE_MID_H
+#ifndef __SEQUENCE_XMI_H
 #define __SEQUENCE_MID_H
 
 #include "sequence.h"
 
-class MIDTrack;
+class XMITrack;
 
-class SequenceMID : public Sequence
+class SequenceXMI : public Sequence
 {
 public:
-	SequenceMID(FILE *file, int offset = 0);
-	~SequenceMID();
+	SequenceXMI(FILE *file, int offset = 0);
+	~SequenceXMI();
 	
 	void reset();
 	uint32_t update(OPLPlayer& player);
@@ -21,12 +21,11 @@ public:
 	static bool isValid(FILE *file, int offset = 0);
 	
 private:
+	uint32_t readRootChunk(FILE *file);
 	void setDefaults();
 
-	std::vector<MIDTrack*> m_tracks;
+	std::vector<XMITrack*> m_tracks;
 	
-	uint16_t m_type;
-	uint16_t m_ticksPerBeat;
 	double m_ticksPerSec;
 };
 

@@ -29,6 +29,8 @@ OPLPlayer::OPLPlayer(int numChips)
 	setSampleRate(44100);
 	setGain(1.0);
 	
+	m_looping = false;
+	
 	reset();
 }
 
@@ -144,8 +146,7 @@ void OPLPlayer::generate(int16_t *data, unsigned numSamples)
 // ----------------------------------------------------------------------------
 void OPLPlayer::updateMIDI(ymfm::ymf262::output_data *output)
 {
-	while (!m_samplesLeft && m_sequence
-	       && (m_looping || !atEnd()))
+	while (!m_samplesLeft && m_sequence && !atEnd())
 	{	
 		// time to update midi playback
 		m_samplesLeft = m_sequence->update(*this);
@@ -155,6 +156,9 @@ void OPLPlayer::updateMIDI(ymfm::ymf262::output_data *output)
 				voice.duration++;
 			voice.justChanged = false;
 		}
+		
+		if (m_samplesLeft)
+			m_timePassed = true;
 	}
 
 	while (m_samplePos < 1.0)
@@ -300,9 +304,38 @@ void OPLPlayer::displayVoices()
 // ----------------------------------------------------------------------------
 bool OPLPlayer::atEnd() const
 {
+	// rewind song at end only if looping is enabled
+	// AND if the song played for at least one sample,
+	// otherwise just leave it at the end
+	if (m_looping && m_timePassed)
+		return false;
 	if (m_sequence)
 		return m_sequence->atEnd();
 	return true;
+}
+
+// ----------------------------------------------------------------------------
+void OPLPlayer::setSongNum(unsigned num)
+{
+	if (m_sequence)
+		m_sequence->setSongNum(num);
+	reset();
+}
+
+// ----------------------------------------------------------------------------
+unsigned OPLPlayer::numSongs() const
+{
+	if (m_sequence)
+		return m_sequence->numSongs();
+	return 0;
+}
+	
+// ----------------------------------------------------------------------------
+unsigned OPLPlayer::songNum() const
+{
+	if (m_sequence)
+		return m_sequence->songNum();
+	return 0;
 }
 
 // ----------------------------------------------------------------------------
@@ -350,6 +383,7 @@ void OPLPlayer::reset()
 	if (m_sequence)
 		m_sequence->reset();
 	m_samplesLeft = 0;
+	m_timePassed = 0;
 }
 
 // ----------------------------------------------------------------------------
@@ -421,14 +455,15 @@ OPLVoice* OPLPlayer::findVoice(bool fourOpOnly)
 }
 
 // ----------------------------------------------------------------------------
-OPLVoice* OPLPlayer::findVoice(uint8_t channel, uint8_t note)
+OPLVoice* OPLPlayer::findVoice(uint8_t channel, uint8_t note, bool justChanged)
 {
 	channel &= 15;
 	for (auto& voice : m_voices)
 	{
-		if (voice.on && !voice.justChanged
-			&& voice.channel == &m_channels[channel]
-			&& voice.note == note)
+		if (voice.on 
+		    && voice.justChanged == justChanged
+		    && voice.channel == &m_channels[channel]
+		    && voice.note == note)
 		{
 			return &voice;
 		}
@@ -664,6 +699,10 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 	note &= 0x7f;
 	velocity &= 0x7f;
 
+	// if we just now turned this same note on, don't do it again
+	if (findVoice(channel, note, true))
+		return;
+	
 	midiNoteOff(channel, note);
 	if (!velocity)
 		return;

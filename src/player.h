@@ -67,6 +67,10 @@ public:
 	void reset();
 	// reached end of song?
 	bool atEnd() const;
+	// song selection (for files with multiple songs)
+	void     setSongNum(unsigned num);
+	unsigned numSongs() const;
+	unsigned songNum() const;
 	
 	// debug
 	void displayClear();
@@ -112,7 +116,7 @@ private:
 	// find a voice with the oldest note
 	OPLVoice* findVoice(bool fourOpOnly = false);
 	// find a voice that's playing a specific note on a specific channel
-	OPLVoice* findVoice(uint8_t channel, uint8_t note);
+	OPLVoice* findVoice(uint8_t channel, uint8_t note, bool justChanged = false);
 
 	// find the patch to use for a specific MIDI channel and note
 	const OPLPatch* findPatch(uint8_t channel, uint8_t note) const;
@@ -148,6 +152,7 @@ private:
 	std::vector<std::queue<ymfm::ymf262::output_data>> m_sampleFIFO;
 	
 	bool m_looping;
+	bool m_timePassed;
 	
 	MIDIChannel m_channels[16];
 	std::vector<OPLVoice> m_voices;

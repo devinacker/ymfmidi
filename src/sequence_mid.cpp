@@ -102,7 +102,7 @@ uint32_t MIDTrack::update(OPLPlayer& player)
 		if (m_size - m_pos < 3)
 		{
 			m_atEnd = true;
-			return UINT_MAX;
+			return 0;
 		}
 		
 		data[0] = m_data[m_pos++];
@@ -158,7 +158,7 @@ uint32_t MIDTrack::update(OPLPlayer& player)
 				else
 				{
 					m_atEnd = true;
-					return UINT_MAX;
+					return 0;
 				}
 				break;
 			}
@@ -169,7 +169,7 @@ uint32_t MIDTrack::update(OPLPlayer& player)
 			if (data[0] == 0x2F || (m_pos + len >= m_size))
 			{
 				m_atEnd = true;
-				return UINT_MAX;
+				return 0;
 			}
 			// tempo change
 			if (data[0] == 0x51)
@@ -194,28 +194,29 @@ SequenceMID::SequenceMID(FILE *file, int offset)
 	uint8_t bytes[10] = {0};
 	
 	fseek(file, offset + 4, SEEK_SET);
-	fread(bytes, 1, 10, file);
-	
-	uint32_t len = READ_U32BE(bytes, 0);
-	
-	m_type = READ_U16BE(bytes, 4);
-	uint16_t numTracks = READ_U16BE(bytes, 6);
-	m_ticksPerBeat = READ_U16BE(bytes, 8);
-	
-	fseek(file, offset + len + 8, SEEK_SET);
-	
-	for (unsigned i = 0; i < numTracks; i++)
+	if (fread(bytes, 1, 10, file) == 10)
 	{
-		memset(bytes, 0, 10);
-		fread(bytes, 1, 8, file);
+		uint32_t len = READ_U32BE(bytes, 0);
 		
-		if (memcmp(bytes, "MTrk", 4))
-			break;
+		m_type = READ_U16BE(bytes, 4);
+		uint16_t numTracks = READ_U16BE(bytes, 6);
+		m_ticksPerBeat = READ_U16BE(bytes, 8);
 		
-		len = READ_U32BE(bytes, 4);
-		m_tracks.push_back(new MIDTrack(file, len, this));
+		fseek(file, offset + len + 8, SEEK_SET);
+		
+		for (unsigned i = 0; i < numTracks; i++)
+		{
+			memset(bytes, 0, 10);
+			if (fread(bytes, 1, 8, file) != 8)
+				break;
+			
+			if (memcmp(bytes, "MTrk", 4))
+				break;
+			
+			len = READ_U32BE(bytes, 4);
+			m_tracks.push_back(new MIDTrack(file, len, this));
+		}
 	}
-	
 	setDefaults();
 }
 
@@ -232,7 +233,8 @@ bool SequenceMID::isValid(FILE *file, int offset)
 	uint8_t bytes[10] = {0};
 	
 	fseek(file, offset, SEEK_SET);
-	fread(bytes, 1, 10, file);
+	if (fread(bytes, 1, 10, file) != 10)
+		return false;
 	
 	if (memcmp(bytes, "MThd", 4))
 		return false;
@@ -270,18 +272,35 @@ void SequenceMID::setUsecPerBeat(uint32_t usec)
 }
 
 // ----------------------------------------------------------------------------
+unsigned SequenceMID::numSongs() const
+{
+	if (m_type != 2)
+		return 1;
+	else
+		return m_tracks.size();
+}
+
+// ----------------------------------------------------------------------------
 uint32_t SequenceMID::update(OPLPlayer& player)
 {
 	uint32_t tickDelay = UINT_MAX;
 	
 	bool tracksAtEnd = true;
 
-	for (auto track : m_tracks)
+	if (m_type != 2)
 	{
-		tickDelay = std::min(tickDelay, track->update(player));
-		tracksAtEnd &= track->atEnd();
+		for (auto track : m_tracks)
+		{
+			tickDelay = std::min(tickDelay, track->update(player));
+			tracksAtEnd &= track->atEnd();
+		}
 	}
-	
+	else if (m_songNum < m_tracks.size())
+	{
+		tickDelay   = m_tracks[m_songNum]->update(player);
+		tracksAtEnd = m_tracks[m_songNum]->atEnd();
+	}
+		
 	if (tracksAtEnd)
 	{
 		reset();
