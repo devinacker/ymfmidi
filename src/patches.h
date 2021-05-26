@@ -1,6 +1,7 @@
 #ifndef __PATCHES_H
 #define __PATCHES_H
 
+#include <map>
 #include <string>
 
 // one carrier/modulator pair in a patch, out of a possible two
@@ -18,6 +19,8 @@ struct PatchVoice
 	double finetune = 0.0;
 };
 
+typedef std::map<uint16_t, struct OPLPatch> OPLPatchSet;
+
 struct OPLPatch
 {
 	std::string name;
@@ -31,15 +34,15 @@ struct OPLPatch
 	// default names
 	static const char* names[256];
 	
-	static bool load(const char *path, OPLPatch (&patches)[256], int offset = 0);
-	static bool load(FILE *file, OPLPatch (&patches)[256], int offset = 0);
+	static bool load(const char *path, OPLPatchSet& patches, int offset = 0);
+	static bool load(FILE *file, OPLPatchSet& patches, int offset = 0);
 
 private:
 	// individual format loaders
-	static bool loadWOPL(FILE *file, OPLPatch (&patches)[256], int offset = 0);
-	static bool loadOP2(FILE *file, OPLPatch (&patches)[256], int offset = 0);
-	static bool loadAIL(FILE *file, OPLPatch (&patches)[256], int offset = 0);
-	static bool loadTMB(FILE *file, OPLPatch (&patches)[256], int offset = 0);
+	static bool loadWOPL(FILE *file, OPLPatchSet& patches, int offset = 0);
+	static bool loadOP2(FILE *file, OPLPatchSet& patches, int offset = 0);
+	static bool loadAIL(FILE *file, OPLPatchSet& patches, int offset = 0);
+	static bool loadTMB(FILE *file, OPLPatchSet& patches, int offset = 0);
 };
 
 #endif // __PATCHES_H

@@ -152,6 +152,8 @@ uint32_t MIDTrack::update(OPLPlayer& player)
 				len = readVLQ();
 				if (m_pos + len < m_size)
 				{
+					if (m_status == 0xf0)
+						player.midiSysEx(m_data + m_pos, len);
 					m_pos += len;
 				}
 				else

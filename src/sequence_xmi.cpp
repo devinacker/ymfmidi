@@ -199,6 +199,8 @@ uint32_t XMITrack::update(OPLPlayer& player)
 				len = readVLQ();
 				if (m_pos + len < m_size)
 				{
+					if (status == 0xf0)
+						player.midiSysEx(m_data + m_pos, len);
 					m_pos += len;
 				}
 				else

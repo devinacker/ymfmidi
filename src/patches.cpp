@@ -4,7 +4,7 @@
 #include "patches.h"
 
 // ----------------------------------------------------------------------------
-bool OPLPatch::load(const char *path, OPLPatch (&patches)[256], int offset)
+bool OPLPatch::load(const char *path, OPLPatchSet& patches, int offset)
 {
 	FILE *file = fopen(path, "rb");
 	if (!file) return false;
@@ -17,7 +17,7 @@ bool OPLPatch::load(const char *path, OPLPatch (&patches)[256], int offset)
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPatch::load(FILE *file, OPLPatch (&patches)[256], int offset)
+bool OPLPatch::load(FILE *file, OPLPatchSet& patches, int offset)
 {
 	return loadWOPL(file, patches, offset)
 	    || loadOP2(file, patches, offset)
@@ -26,7 +26,7 @@ bool OPLPatch::load(FILE *file, OPLPatch (&patches)[256], int offset)
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPatch::loadWOPL(FILE *file, OPLPatch (&patches)[256], int offset)
+bool OPLPatch::loadWOPL(FILE *file, OPLPatchSet& patches, int offset)
 {
 	uint8_t bytes[66] = {0};
 	
@@ -46,28 +46,39 @@ bool OPLPatch::loadWOPL(FILE *file, OPLPatch (&patches)[256], int offset)
 	
 	// currently not supported: global LFO flags, volume model options
 	
-	if (version >= 2) // skip bank names
-		fseek(file, offset + 34 * (numMelody + numPerc), SEEK_CUR);
+	const uint32_t bankOffset  = offset + 19;
+	const uint32_t patchOffset = bankOffset + 34 * (numMelody + numPerc);
 	
 	const unsigned instSize = (version >= 3) ? 66 : 62;
 	
 	for (unsigned i = 0; i < 128 * (numMelody + numPerc); i++)
 	{
+		unsigned key = i & 0x7f;
+		if (version >= 2)
+		{
+			const unsigned bank = i >> 7;
+			fseek(file, bankOffset + 34 * bank, SEEK_SET);
+			if (fread(bytes, 1, 34, file) != 34)
+				return false;
+
+			if (bank >= numMelody) // percussion banks (use LSB)
+				key |= (bytes[32] << 8) | 0x80;
+			else if (bytes[32]) // bank LSB set (XG)
+				key |= (bytes[32] << 8);
+			else if (bytes[33]) // bank MSB set (GS)
+				key |= (bytes[33] << 8);
+		}
+
+		fseek(file, patchOffset + instSize * i, SEEK_SET);
 		if (fread(bytes, 1, instSize, file) != instSize)
 			return false;
 		
-		const unsigned bank = i >> 7;
-		unsigned key;
-		if (bank < numMelody)
-			key = (bank << 8) | (i & 0x7f);
-		else
-			key = ((bank - numMelody) << 8) | (i & 0x7f) | 0x80;
-		// only 1 melody and percussion bank supported right now
-		if (key & 0xff00)
+		// ignore other data for this patch if it's a blank instrument
+		// *or* if one of the rhythm mode bits is set (not supported here)
+		if (bytes[39] & 0x3c)
 			continue;
 		
 		OPLPatch &patch = patches[key];
-		
 		// clear patch data
 		patch = OPLPatch();
 		
@@ -76,7 +87,7 @@ bool OPLPatch::loadWOPL(FILE *file, OPLPatch (&patches)[256], int offset)
 		if (bytes[0])
 			patch.name = (const char*)bytes;
 		else
-			patch.name = names[key];
+			patch.name = names[key & 0xff];
 		
 		// patch global settings
 		patch.voice[0].tune     = (int8_t)bytes[33] - 12;
@@ -86,11 +97,6 @@ bool OPLPatch::loadWOPL(FILE *file, OPLPatch (&patches)[256], int offset)
 		patch.fixedNote         = bytes[38];
 		patch.fourOp            = (bytes[39] & 3) == 1;
 		patch.dualTwoOp         = (bytes[39] & 3) == 3;
-		// ignore other data for this patch if it's a blank instrument
-		// *or* if one of the rhythm mode bits is set (not supported here)
-		if (bytes[39] & 0x3c)
-			continue;
-		
 		patch.voice[0].conn = bytes[40];
 		patch.voice[1].conn = bytes[41];
 		
@@ -115,7 +121,7 @@ bool OPLPatch::loadWOPL(FILE *file, OPLPatch (&patches)[256], int offset)
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPatch::loadOP2(FILE *file, OPLPatch (&patches)[256], int offset)
+bool OPLPatch::loadOP2(FILE *file, OPLPatchSet& patches, int offset)
 {
 	uint8_t bytes[36] = {0};
 
@@ -199,7 +205,7 @@ bool OPLPatch::loadOP2(FILE *file, OPLPatch (&patches)[256], int offset)
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPatch::loadAIL(FILE *file, OPLPatch (&patches)[256], int offset)
+bool OPLPatch::loadAIL(FILE *file, OPLPatchSet& patches, int offset)
 {
 	fseek(file, offset, SEEK_SET);
 	
@@ -211,17 +217,15 @@ bool OPLPatch::loadAIL(FILE *file, OPLPatch (&patches)[256], int offset)
 			return false;
 		if (entry[0] == 0xff && entry[1] == 0xff)
 			return true; // end of patches
-		else if (entry[1] == 0)
-			key = entry[0] & 0x7f;
 		else if (entry[1] == 0x7f)
 			key = entry[0] | 0x80;
 		else
-			continue; // additional melody banks currently not supported
+			key = (entry[0] | (entry[1] << 8)) & 0x7f7f;
 		
 		OPLPatch &patch = patches[key];
 		// clear patch data
 		patch = OPLPatch();
-		patch.name = names[key];
+		patch.name = names[key & 0xff];
 		
 		unsigned currentPos = ftell(file);
 		uint32_t patchPos = entry[2] | (entry[3] << 8) | (entry[4] << 16) | (entry[5] << 24);
@@ -272,7 +276,7 @@ bool OPLPatch::loadAIL(FILE *file, OPLPatch (&patches)[256], int offset)
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPatch::loadTMB(FILE *file, OPLPatch (&patches)[256], int offset)
+bool OPLPatch::loadTMB(FILE *file, OPLPatchSet& patches, int offset)
 {
 	fseek(file, offset, SEEK_SET);
 	

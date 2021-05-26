@@ -14,6 +14,8 @@ struct MIDIChannel
 {
 	uint8_t num = 0;
 
+	bool percussion = false;
+	uint8_t bank = 0;
 	uint8_t patchNum = 0;
 	uint8_t volume = 127;
 	uint8_t pan = 64;
@@ -47,6 +49,14 @@ struct OPLVoice
 class OPLPlayer : public ymfm::ymfm_interface
 {
 public:
+	enum MIDIType
+	{
+		GeneralMIDI,
+		RolandGS,
+		YamahaXG,
+		GeneralMIDI2
+	};
+
 	OPLPlayer(int numChips = 1);
 	virtual ~OPLPlayer();
 	
@@ -72,6 +82,15 @@ public:
 	unsigned numSongs() const;
 	unsigned songNum() const;
 	
+	// MIDI events, called by the file format handler
+	void midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity);
+	void midiNoteOff(uint8_t channel, uint8_t note);
+	void midiPitchControl(uint8_t channel, double pitch);
+	void midiProgramChange(uint8_t channel, uint8_t patchNum);
+	void midiControlChange(uint8_t channel, uint8_t control, uint8_t value);
+	// sysex data (data and length *don't* include the opening 0xF0)
+	void midiSysEx(const uint8_t *data, uint32_t length);
+	
 	// debug
 	void displayClear();
 	void displayChannels();
@@ -80,13 +99,6 @@ public:
 	// misc. informational stuff
 	uint32_t sampleRate() const { return m_sampleRate; }
 	const std::string& patchName(uint8_t num) { return m_patches[num].name; }
-	
-	// MIDI events, called by the file format handler
-	void midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity);
-	void midiNoteOff(uint8_t channel, uint8_t note);
-	void midiPitchControl(uint8_t channel, double pitch);
-	void midiProgramChange(uint8_t channel, uint8_t patchNum);
-	void midiControlChange(uint8_t channel, uint8_t control, uint8_t value);
 	
 private:
 	static const unsigned masterClock = 14318181;
@@ -157,9 +169,10 @@ private:
 	
 	MIDIChannel m_channels[16];
 	std::vector<OPLVoice> m_voices;
+	MIDIType m_midiType;
 	
 	Sequence *m_sequence;
-	OPLPatch m_patches[256];
+	OPLPatchSet m_patches;
 };
 
 #endif // __PLAYER_H

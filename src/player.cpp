@@ -1,6 +1,8 @@
 #include "player.h"
 #include "sequence.h"
 
+#include <cstring>
+
 static const unsigned voice_num[18] = {
 	0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8,
 	0x100, 0x101, 0x102, 0x103, 0x104, 0x105, 0x106, 0x107, 0x108
@@ -205,9 +207,10 @@ void OPLPlayer::displayChannels()
 	for (int i = 0; i < 16; i++)
 	{
 		const auto& channel = m_channels[i];
+		const OPLPatch *patch = findPatch(i, 0);
 	
 		printf("%3u | %-32s | %3u | %3u | ", i + 1, 
-			(i == 9) ? "Percussion" : findPatch(i, 0)->name.c_str(),
+			channel.percussion ? "Percussion" : (patch ? patch->name.c_str() : ""),
 			channel.volume, channel.pan);
 		
 		if (m_voices.size() < 100)
@@ -350,11 +353,14 @@ void OPLPlayer::reset()
 	}
 		
 	// reset MIDI channel and OPL voice status
+	m_midiType = GeneralMIDI;
 	for (int i = 0; i < 16; i++)
 	{
 		m_channels[i] = MIDIChannel();
 		m_channels[i].num = i;
 	}
+	m_channels[9].percussion = true;
+	
 	for (int i = 0; i < m_voices.size(); i++)
 	{
 		m_voices[i] = OPLVoice();
@@ -491,14 +497,25 @@ OPLVoice* OPLPlayer::findVoice(uint8_t channel, uint8_t note, bool justChanged)
 // ----------------------------------------------------------------------------
 const OPLPatch* OPLPlayer::findPatch(uint8_t channel, uint8_t note) const
 {
-	if (channel == 9)
-	{
-		return &m_patches[128 | note];
-	}
+	uint16_t key;
+	const MIDIChannel &ch = m_channels[channel & 15];
+
+	if (ch.percussion)
+		key = 0x80 | note;
 	else
-	{
-		return &m_patches[m_channels[channel & 15].patchNum & 0x7f];
-	}
+		key = ch.patchNum | (ch.bank << 8);
+	
+	// if this patch+bank combo doesn't exist, default to bank 0
+	if (!m_patches.count(key))
+		key &= 0x00ff;
+	// if patch still doesn't exist in bank 0, use patch 0 (or drum note 0)
+	if (!m_patches.count(key))
+		key &= 0x0080;
+	// if that somehow still doesn't exist, forget it
+	if (!m_patches.count(key))
+		return nullptr;
+	
+	return &m_patches.at(key);
 }
 
 // ----------------------------------------------------------------------------
@@ -812,6 +829,13 @@ void OPLPlayer::midiControlChange(uint8_t channel, uint8_t control, uint8_t valu
 //	printf("midiControlChange: chn %u, ctrl %u, val %u\n", channel, control, value);
 	switch (control)
 	{
+	case 0:
+		if (m_midiType == RolandGS)
+			m_channels[channel].bank = value;
+		else if (m_midiType == YamahaXG)
+			m_channels[channel].percussion = (value == 0x7f);
+		break;
+	
 	case 7:
 		m_channels[channel].volume = value;
 		updateChannelVoices(channel, &OPLPlayer::updateVolume);
@@ -821,5 +845,52 @@ void OPLPlayer::midiControlChange(uint8_t channel, uint8_t control, uint8_t valu
 		m_channels[channel].pan = value;
 		updateChannelVoices(channel, &OPLPlayer::updatePanning);
 		break;
+	
+	case 32:
+		if (m_midiType == YamahaXG || m_midiType == GeneralMIDI2)
+			m_channels[channel].bank = value;
+		break;
+	}
+}
+
+// ----------------------------------------------------------------------------
+void OPLPlayer::midiSysEx(const uint8_t *data, uint32_t length)
+{
+	if (length == 0)
+		return;
+
+	if (data[0] == 0x7e) // universal non-realtime
+	{
+		if (length == 5 && data[1] == 0x7f && data[2] == 0x09)
+		{
+			if (data[3] == 0x01)
+				m_midiType = GeneralMIDI;
+			else if (data[3] == 0x03)
+				m_midiType = GeneralMIDI2;
+		}
+	}
+	else if (data[0] == 0x41 && length >= 10 // Roland
+	         && data[2] == 0x42 && data[3] == 0x12)
+	{
+		// if we received one of these, assume GS mode
+		// (some MIDIs seem to e.g. send drum map messages without a GS reset)
+		m_midiType = RolandGS;
+		
+		uint32_t address = (data[4] << 16) | (data[5] << 8) | data[6];
+		// for single part parameters, map "part number" to channel number
+		// (using the default mapping)
+		uint8_t channel = (address & 0xf00) >> 8;
+		if (channel == 0)
+			channel = 9;
+		else if (channel <= 9)
+			channel--;
+			
+		// Roland GS part parameters
+		if ((address & 0xfff0ff) == 0x401015) // set drum map
+			m_channels[channel].percussion = (data[7] != 0x00);
+	}
+	else if (length >= 8 && !memcmp(data, "\x43\x10\x4c\x00\x00\x7e\x00\xf7", 8)) // Yamaha
+	{
+		m_midiType = YamahaXG;
 	}
 }
