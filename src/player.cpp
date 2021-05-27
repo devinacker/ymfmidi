@@ -1,6 +1,7 @@
 #include "player.h"
 #include "sequence.h"
 
+#include <cmath>
 #include <cstring>
 
 static const unsigned voice_num[18] = {
@@ -668,13 +669,11 @@ void OPLPlayer::updateFrequency(OPLVoice& voice)
 		// calculated from A440
 		345, 365, 387, 410, 435, 460, 488, 517, 547, 580, 615, 651
 	};
-	static const double noteBendUp   = 0.1224620;  // ~2 semitones
-	static const double noteBendDown = 0.1091013;
-	
+
 	if (!voice.patch || !voice.channel) return;
 	if (voice.patch->fourOp && !voice.fourOpPrimary) return;
 	
-	int note = ((voice.channel->num != 9) ? voice.note : voice.patch->fixedNote)
+	int note = (!voice.channel->percussion ? voice.note : voice.patch->fixedNote)
 	         + voice.patchVoice->tune;
 	
 	int octave = note / 12;
@@ -687,11 +686,15 @@ void OPLPlayer::updateFrequency(OPLVoice& voice)
 	else if (octave > 0)
 		freq <<= octave;
 	
-	const double detune = (voice.channel->pitch + voice.patchVoice->finetune);
-	if (detune > 0)
-		freq += freq * noteBendUp * detune;
-	else if (detune < 0)
-		freq += freq * noteBendDown * detune;
+	if (voice.channel->pitch > 0)
+		freq += freq * voice.channel->noteBendUp * voice.channel->pitch;
+	else if (voice.channel->pitch < 0)
+		freq += freq * voice.channel->noteBendDown * voice.channel->pitch;
+		
+	if (voice.patchVoice->finetune > 0)
+		freq += freq * MIDIChannel::defaultBendUp * voice.patchVoice->finetune;
+	else if (voice.patchVoice->finetune < 0)
+		freq += freq * MIDIChannel::defaultBendDown * voice.patchVoice->finetune;
 	
 	// convert the calculated frequency back to a block and F-number
 	octave = 0;
@@ -703,7 +706,6 @@ void OPLPlayer::updateFrequency(OPLVoice& voice)
 	octave = std::min(7, octave);
 	voice.freq = freq | (octave << 10);
 	
-//	printf("voice.freq: %u\n", voice.freq);
 	write(voice.chip, REG_VOICE_FREQL + voice.num, voice.freq & 0xff);
 	write(voice.chip, REG_VOICE_FREQH + voice.num, (voice.freq >> 8) | (voice.on ? (1 << 5) : 0));
 }
@@ -826,30 +828,56 @@ void OPLPlayer::midiControlChange(uint8_t channel, uint8_t control, uint8_t valu
 	control &= 0x7f;
 	value   &= 0x7f;
 	
+	MIDIChannel& ch = m_channels[channel];
+	
 //	printf("midiControlChange: chn %u, ctrl %u, val %u\n", channel, control, value);
 	switch (control)
 	{
 	case 0:
 		if (m_midiType == RolandGS)
-			m_channels[channel].bank = value;
+			ch.bank = value;
 		else if (m_midiType == YamahaXG)
-			m_channels[channel].percussion = (value == 0x7f);
+			ch.percussion = (value == 0x7f);
+		break;
+		
+	case 6:
+		if (ch.rpn == 0)
+		{
+			midiSetBendRange(channel, value);
+			updateChannelVoices(channel, &OPLPlayer::updateFrequency);
+		}
 		break;
 	
 	case 7:
-		m_channels[channel].volume = value;
+		ch.volume = value;
 		updateChannelVoices(channel, &OPLPlayer::updateVolume);
 		break;
 	
 	case 10:
-		m_channels[channel].pan = value;
+		ch.pan = value;
 		updateChannelVoices(channel, &OPLPlayer::updatePanning);
 		break;
 	
 	case 32:
 		if (m_midiType == YamahaXG || m_midiType == GeneralMIDI2)
-			m_channels[channel].bank = value;
+			ch.bank = value;
 		break;
+	
+	case 98:
+	case 99:
+		ch.rpn = 0x3fff;
+		break;
+	
+	case 100:
+		ch.rpn &= 0x3f80;
+		ch.rpn |= value;
+		break;
+		
+	case 101:
+		ch.rpn &= 0x7f;
+		ch.rpn |= (value << 7);
+		break;
+	
 	}
 }
 
@@ -893,4 +921,13 @@ void OPLPlayer::midiSysEx(const uint8_t *data, uint32_t length)
 	{
 		m_midiType = YamahaXG;
 	}
+}
+
+// ----------------------------------------------------------------------------
+void OPLPlayer::midiSetBendRange(uint8_t channel, uint8_t range)
+{
+	MIDIChannel& ch = m_channels[channel & 15];
+	
+	ch.noteBendUp   = pow(2, range / 12.0) - 1;
+	ch.noteBendDown = 1 - (1 / (ch.noteBendUp + 1));
 }

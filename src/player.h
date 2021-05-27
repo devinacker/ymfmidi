@@ -20,6 +20,14 @@ struct MIDIChannel
 	uint8_t volume = 127;
 	uint8_t pan = 64;
 	double pitch = 0.0;
+	
+	uint16_t rpn = 0x3fff;
+
+	static constexpr double defaultBendUp   = 0.1224620;  // ~2 semitones
+	static constexpr double defaultBendDown = 0.1091013;
+
+	double noteBendUp   = defaultBendUp;
+	double noteBendDown = defaultBendDown;
 };
 
 struct OPLVoice
@@ -90,6 +98,9 @@ public:
 	void midiControlChange(uint8_t channel, uint8_t control, uint8_t value);
 	// sysex data (data and length *don't* include the opening 0xF0)
 	void midiSysEx(const uint8_t *data, uint32_t length);
+	
+	// helper for pitch bend range RPN
+	void midiSetBendRange(uint8_t channel, uint8_t range);
 	
 	// debug
 	void displayClear();

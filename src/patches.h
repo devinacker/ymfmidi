@@ -1,8 +1,8 @@
 #ifndef __PATCHES_H
 #define __PATCHES_H
 
-#include <map>
 #include <string>
+#include <unordered_map>
 
 // one carrier/modulator pair in a patch, out of a possible two
 struct PatchVoice
@@ -19,7 +19,7 @@ struct PatchVoice
 	double finetune = 0.0;
 };
 
-typedef std::map<uint16_t, struct OPLPatch> OPLPatchSet;
+typedef std::unordered_map<uint16_t, struct OPLPatch> OPLPatchSet;
 
 struct OPLPatch
 {
