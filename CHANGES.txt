@@ -1,3 +1,10 @@
+v0.3.0 [2021-05-27]
+- Added basic support for GS/XG/GM2 features
+- Added support for .xmi files
+- Added support for files containing multiple songs
+- Added support for RPN #0 (pitch bend range)
+- More tweaks to voice/channel allocation
+
 v0.2.0 [2021-05-23]
 - Added support for 4-operator instrument patches
 - Added support for .ad/.opl (Miles/AIL) and .tmb (Apogee) bank formats

@@ -921,6 +921,12 @@ void OPLPlayer::midiControlChange(uint8_t channel, uint8_t control, uint8_t valu
 // ----------------------------------------------------------------------------
 void OPLPlayer::midiSysEx(const uint8_t *data, uint32_t length)
 {
+	if (length > 0 && data[0] == 0xF0)
+	{
+		data++;
+		length--;
+	}
+
 	if (length == 0)
 		return;
 
