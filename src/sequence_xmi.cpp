@@ -174,9 +174,7 @@ uint32_t XMITrack::update(OPLPlayer& player)
 			break;
 		
 		case 11: // controller change
-			data[1] = m_data[m_pos++];
-			if (data[0] < 32)
-				player.midiControlChange(channel, data[0], data[1]);
+			player.midiControlChange(channel, data[0], m_data[m_pos++]);
 			break;
 		
 		case 12: // program change
