@@ -729,6 +729,43 @@ void OPLPlayer::silenceVoice(OPLVoice& voice)
 }
 
 // ----------------------------------------------------------------------------
+void OPLPlayer::midiEvent(uint8_t status, uint8_t data0, uint8_t data1)
+{
+	uint8_t channel = status & 15;
+	int16_t pitch;
+
+	switch (status >> 4)
+	{
+	case 8: // note off (ignore velocity)
+		midiNoteOff(channel, data0);
+		break;
+	
+	case 9: // note on
+		midiNoteOn(channel, data0, data1);
+		break;
+	
+	case 10: // polyphonic pressure (ignored)
+		break;
+		
+	case 11: // controller change
+		midiControlChange(channel, data0, data1);
+		break;
+	
+	case 12: // program change
+		midiProgramChange(channel, data0);
+		break;
+	
+	case 13: // channel pressure (ignored)
+		break;
+	
+	case 14: // pitch bend
+		pitch = (int16_t)(data0 | (data1 << 7)) - 8192;
+		midiPitchControl(channel, pitch / 8192.0);
+		break;
+	}
+}
+
+// ----------------------------------------------------------------------------
 void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 {
 	note &= 0x7f;
@@ -924,10 +961,10 @@ void OPLPlayer::midiSysEx(const uint8_t *data, uint32_t length)
 }
 
 // ----------------------------------------------------------------------------
-void OPLPlayer::midiSetBendRange(uint8_t channel, uint8_t range)
+void OPLPlayer::midiSetBendRange(uint8_t channel, uint8_t semitones)
 {
 	MIDIChannel& ch = m_channels[channel & 15];
 	
-	ch.noteBendUp   = pow(2, range / 12.0) - 1;
+	ch.noteBendUp   = pow(2, semitones / 12.0) - 1;
 	ch.noteBendDown = 1 - (1 / (ch.noteBendUp + 1));
 }

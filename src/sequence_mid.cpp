@@ -93,8 +93,6 @@ uint32_t MIDTrack::update(OPLPlayer& player)
 	while (m_delay <= 0)
 	{
 		uint8_t data[2];
-		uint8_t channel;
-		int16_t pitch;
 		uint32_t len;
 		
 		// make sure we have enough data left for one full event
@@ -105,44 +103,25 @@ uint32_t MIDTrack::update(OPLPlayer& player)
 		}
 		
 		data[0] = m_data[m_pos++];
+		data[1] = 0;
 		if (data[0] & 0x80)
 		{
 			m_status = data[0];
 			data[0] = m_data[m_pos++];
 		}
 		
-		channel = m_status & 15;
 		switch (m_status >> 4)
 		{
-		case 8: // note off
-			player.midiNoteOff(channel, data[0]);
-			// ignore velocity
-			m_pos++;
-			break;
-		
-		case 9: // note on
-			player.midiNoteOn(channel, data[0], m_data[m_pos++]);
-			break;
-		
-		case 10: // polyphonic pressure (ignored)
-			m_pos++;
-			break;
-		
+		case 8:  // note off
+		case 9:  // note on
+		case 10: // polyphonic pressure
 		case 11: // controller change
-			player.midiControlChange(channel, data[0], m_data[m_pos++]);
-			break;
-		
-		case 12: // program change
-			player.midiProgramChange(channel, data[0]);
-			break;
-		
-		case 13: // channel pressure (ignored)
-			break;
-		
 		case 14: // pitch bend
 			data[1] = m_data[m_pos++];
-			pitch = (int16_t)(data[0] | (data[1] << 7)) - 8192;
-			player.midiPitchControl(channel, pitch / 8192.0);
+			// fallthrough
+		case 12: // program change
+		case 13: // channel pressure (ignored)
+			player.midiEvent(m_status, data[0], data[1]);
 			break;
 		
 		case 15: // sysex / meta event

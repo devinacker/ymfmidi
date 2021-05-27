@@ -91,16 +91,18 @@ public:
 	unsigned songNum() const;
 	
 	// MIDI events, called by the file format handler
+	void midiEvent(uint8_t status, uint8_t data0, uint8_t data1 = 0);
+	// helpers for midiEvent
 	void midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity);
 	void midiNoteOff(uint8_t channel, uint8_t note);
-	void midiPitchControl(uint8_t channel, double pitch);
+	void midiPitchControl(uint8_t channel, double pitch); // range is -1.0 to 1.0
 	void midiProgramChange(uint8_t channel, uint8_t patchNum);
 	void midiControlChange(uint8_t channel, uint8_t control, uint8_t value);
 	// sysex data (data and length *don't* include the opening 0xF0)
 	void midiSysEx(const uint8_t *data, uint32_t length);
 	
 	// helper for pitch bend range RPN
-	void midiSetBendRange(uint8_t channel, uint8_t range);
+	void midiSetBendRange(uint8_t channel, uint8_t semitones);
 	
 	// debug
 	void displayClear();

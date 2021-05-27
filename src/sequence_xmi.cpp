@@ -142,7 +142,6 @@ uint32_t XMITrack::update(OPLPlayer& player)
 		uint8_t status;
 		uint8_t data[2];
 		uint8_t channel;
-		int16_t pitch;
 		uint32_t len;
 		XMINote note;
 		
@@ -155,10 +154,22 @@ uint32_t XMITrack::update(OPLPlayer& player)
 		
 		status = m_data[m_pos++];
 		data[0] = m_data[m_pos++];
+		data[1] = 0;
 		
 		channel = status & 15;
 		switch (status >> 4)
 		{
+		case 8:  // note off
+		case 10: // polyphonic pressure
+		case 11: // controller change
+		case 14: // pitch bend
+			data[1] = m_data[m_pos++];
+			// fallthrough
+		case 12: // program change
+		case 13: // channel pressure (ignored)
+			player.midiEvent(status, data[0], data[1]);
+			break;
+		
 		case 9: // note on
 			data[1] = m_data[m_pos++];
 			player.midiNoteOn(channel, data[0], data[1]);
@@ -167,27 +178,6 @@ uint32_t XMITrack::update(OPLPlayer& player)
 			note.note    = data[0];
 			note.delay   = readVLQ();
 			m_notes.push_back(note);
-			break;
-		
-		case 10: // polyphonic pressure (ignored)
-			m_pos++;
-			break;
-		
-		case 11: // controller change
-			player.midiControlChange(channel, data[0], m_data[m_pos++]);
-			break;
-		
-		case 12: // program change
-			player.midiProgramChange(channel, data[0]);
-			break;
-		
-		case 13: // channel pressure (ignored)
-			break;
-		
-		case 14: // pitch bend
-			data[1] = m_data[m_pos++];
-			pitch = (int16_t)(data[0] | (data[1] << 7)) - 8192;
-			player.midiPitchControl(channel, pitch / 8192.0);
 			break;
 		
 		case 15: // sysex / meta event
