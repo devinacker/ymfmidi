@@ -41,6 +41,9 @@ public:
 protected:
 	bool m_atEnd;
 	unsigned m_songNum;
+	
+private:
+	virtual void read(const uint8_t *data, size_t size) = 0;
 };
 
 #endif // __SEQUENCE_H

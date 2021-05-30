@@ -42,12 +42,17 @@ Sequence* Sequence::load(FILE *file, int offset, size_t size)
 // ----------------------------------------------------------------------------
 Sequence* Sequence::load(const uint8_t *data, size_t size)
 {
+	Sequence *seq = nullptr;
+
 	if (SequenceMUS::isValid(data, size))
-		return new SequenceMUS(data, size);
+		seq = new SequenceMUS();
 	else if (SequenceMID::isValid(data, size))
-		return new SequenceMID(data, size);
+		seq = new SequenceMID();
 	else if (SequenceXMI::isValid(data, size))
-		return new SequenceXMI(data, size);
+		seq = new SequenceXMI();
 	
-	return nullptr;
+	if (seq)
+		seq->read(data, size);
+	
+	return seq;
 }

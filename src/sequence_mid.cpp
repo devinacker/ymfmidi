@@ -7,30 +7,6 @@
 #define READ_U24BE(data, pos) ((data[pos] << 16) | (data[pos+1] << 8) | data[pos+2])
 #define READ_U32BE(data, pos) ((data[pos] << 24) | (data[pos+1] << 16) | (data[pos+2] << 8) | data[pos+3])
 
-class MIDTrack
-{
-public:
-	MIDTrack(const uint8_t *data, size_t size, SequenceMID* sequence);
-	~MIDTrack();
-	
-	void reset();
-	void advance(uint32_t time);
-	uint32_t update(OPLPlayer& player);
-	
-	bool atEnd() const { return m_atEnd; }
-	
-private:
-	uint32_t readVLQ();
-
-	SequenceMID *m_sequence;
-	uint8_t *m_data;
-	uint32_t m_pos, m_size;
-	int32_t m_delay;
-	bool m_initDelay; // false if nothing has happened yet and we should just read the initial delay
-	bool m_atEnd;
-	uint8_t m_status; // for MIDI running status
-};
-
 // ----------------------------------------------------------------------------
 MIDTrack::MIDTrack(const uint8_t *data, size_t size, SequenceMID *sequence)
 {
@@ -38,6 +14,10 @@ MIDTrack::MIDTrack(const uint8_t *data, size_t size, SequenceMID *sequence)
 	m_size = size;
 	memcpy(m_data, data, size);
 	m_sequence = sequence;
+	
+	m_initDelay = true;
+	m_useRunningStatus = true;
+	m_useNoteDuration = false;
 	
 	reset();
 }
@@ -52,7 +32,6 @@ MIDTrack::~MIDTrack()
 void MIDTrack::reset()
 {
 	m_pos = m_delay = 0;
-	m_initDelay = true;
 	m_atEnd = false;
 	m_status = 0x00;
 }
@@ -64,6 +43,9 @@ void MIDTrack::advance(uint32_t time)
 		return;
 	
 	m_delay -= time;
+	if (m_useNoteDuration)
+		for (auto& note : m_notes)
+			note.delay -= time;
 }
 
 // ----------------------------------------------------------------------------
@@ -83,18 +65,43 @@ uint32_t MIDTrack::readVLQ()
 }
 
 // ----------------------------------------------------------------------------
+int32_t MIDTrack::minDelay()
+{
+	int32_t delay = m_delay;
+	if (m_useNoteDuration)
+		for (auto& note : m_notes)
+			delay = std::min(delay, note.delay);
+	return delay;
+}
+
+// ----------------------------------------------------------------------------
 uint32_t MIDTrack::update(OPLPlayer& player)
 {
-	if (m_initDelay)
+	if (m_initDelay && !m_pos)
 	{
-		m_initDelay = false;
-		m_delay = readVLQ();
+		m_delay = readDelay();
+	}
+	
+	if (m_useNoteDuration)
+	{
+		for (int i = 0; i < m_notes.size();)
+		{
+			if (m_notes[i].delay <= 0)
+			{
+				player.midiNoteOff(m_notes[i].channel, m_notes[i].note);
+				m_notes[i] = m_notes.back();
+				m_notes.pop_back();
+			}	
+			else
+				i++;
+		}
 	}
 	
 	while (m_delay <= 0)
 	{
 		uint8_t data[2];
 		uint32_t len;
+		MIDNote note;
 		
 		// make sure we have enough data left for one full event
 		if (m_size - m_pos < 3)
@@ -103,77 +110,90 @@ uint32_t MIDTrack::update(OPLPlayer& player)
 			return UINT_MAX;
 		}
 		
-		data[0] = m_data[m_pos++];
-		data[1] = 0;
-		if (data[0] & 0x80)
-		{
-			m_status = data[0];
-			data[0] = m_data[m_pos++];
-		}
+		if (!m_useRunningStatus || (m_data[m_pos] & 0x80))
+			m_status = m_data[m_pos++];
 		
 		switch (m_status >> 4)
 		{
+		case 9: // note on
+			data[0] = m_data[m_pos++];
+			data[1] = m_data[m_pos++];
+			player.midiEvent(m_status, data[0], data[1]);
+			
+			if (m_useNoteDuration)
+			{
+				note.channel = m_status & 15;
+				note.note    = data[0];
+				note.delay   = readVLQ();
+				m_notes.push_back(note);
+			}
+			break;
+		
 		case 8:  // note off
-		case 9:  // note on
 		case 10: // polyphonic pressure
 		case 11: // controller change
 		case 14: // pitch bend
+			data[0] = m_data[m_pos++];
 			data[1] = m_data[m_pos++];
-			// fallthrough
+			player.midiEvent(m_status, data[0], data[1]);
+			break;
+			
 		case 12: // program change
 		case 13: // channel pressure (ignored)
-			player.midiEvent(m_status, data[0], data[1]);
+			data[0] = m_data[m_pos++];
+			player.midiEvent(m_status, data[0]);
 			break;
 		
 		case 15: // sysex / meta event
 			if (m_status != 0xFF)
 			{
-				m_pos--;
 				len = readVLQ();
 				if (m_pos + len < m_size)
 				{
 					if (m_status == 0xf0)
 						player.midiSysEx(m_data + m_pos, len);
-					m_pos += len;
 				}
 				else
 				{
 					m_atEnd = true;
 					return UINT_MAX;
 				}
-				break;
 			}
-			
-			len = readVLQ();
-			
-			// end-of-track marker (or data just ran out)
-			if (data[0] == 0x2F || (m_pos + len >= m_size))
+			else
 			{
-				m_atEnd = true;
-				return UINT_MAX;
-			}
-			// tempo change
-			if (data[0] == 0x51)
-			{
-				m_sequence->setUsecPerBeat(READ_U24BE(m_data, m_pos));
+				data[0] = m_data[m_pos++];
+				len = readVLQ();
+				
+				// end-of-track marker (or data just ran out)
+				if (data[0] == 0x2F || (m_pos + len >= m_size))
+				{
+					m_atEnd = true;
+					return UINT_MAX;
+				}
+				// tempo change
+				if (data[0] == 0x51)
+				{
+					m_sequence->setTimePerBeat(READ_U24BE(m_data, m_pos));
+				}
 			}
 			
 			m_pos += len;
 			break;
 		}
 		
-		m_delay += readVLQ();
+		m_delay += readDelay();
 	}
 
-	return m_delay;
+	return minDelay();
 }
 
 // ----------------------------------------------------------------------------
-SequenceMID::SequenceMID(const uint8_t *data, size_t size)
+SequenceMID::SequenceMID()
 	: Sequence()
 {
-	readTracks(data, size);
-	setDefaults();
+	m_type = 0;
+	m_ticksPerBeat = 24;
+	m_ticksPerSec = 48;
 }
 
 // ----------------------------------------------------------------------------
@@ -209,7 +229,7 @@ bool SequenceMID::isValid(const uint8_t *data, size_t size)
 }
 
 // ----------------------------------------------------------------------------
-void SequenceMID::readTracks(const uint8_t *data, size_t size)
+void SequenceMID::read(const uint8_t *data, size_t size)
 {
 	// need at least the MIDI header + one track header
 	if (size < 23)
@@ -236,7 +256,7 @@ void SequenceMID::readTracks(const uint8_t *data, size_t size)
 			if (!memcmp(bytes, "data", 4))
 			{
 				if (isValid(bytes + 8, chunkLen))
-					readTracks(bytes + 8, chunkLen);
+					read(bytes + 8, chunkLen);
 				break;
 			}
 		}
@@ -286,11 +306,11 @@ void SequenceMID::reset()
 // ----------------------------------------------------------------------------
 void SequenceMID::setDefaults()
 {
-	setUsecPerBeat(500000);
+	setTimePerBeat(500000);
 }
 
 // ----------------------------------------------------------------------------
-void SequenceMID::setUsecPerBeat(uint32_t usec)
+void SequenceMID::setTimePerBeat(uint32_t usec)
 {
 	double usecPerTick = (double)usec / m_ticksPerBeat;
 	m_ticksPerSec = 1000000 / usecPerTick;

@@ -4,13 +4,26 @@
 #include <cstring>
 
 // ----------------------------------------------------------------------------
-SequenceMUS::SequenceMUS(const uint8_t *data, size_t size)
+SequenceMUS::SequenceMUS()
 	: Sequence()
 {
 	// cheap safety measure - fill the whole song buffer w/ "end of track" commands
 	// (m_pos is 16 bits, so a malformed track will either hit this or just wrap around)
 	memset(m_data, 0x60, sizeof(m_data));
-	
+	setDefaults();
+}
+
+// ----------------------------------------------------------------------------
+bool SequenceMUS::isValid(const uint8_t *data, size_t size)
+{
+	if (size < 8)
+		return false;
+	return !memcmp(data, "MUS\x1a", 4);
+}
+
+// ----------------------------------------------------------------------------
+void SequenceMUS::read(const uint8_t *data, size_t size)
+{
 	if (size > 8)
 	{
 		uint16_t length = data[4] | (data[5] << 8);
@@ -23,15 +36,6 @@ SequenceMUS::SequenceMUS(const uint8_t *data, size_t size)
 			memcpy(m_data, data + pos, length);
 		}
 	}
-	setDefaults();
-}
-
-// ----------------------------------------------------------------------------
-bool SequenceMUS::isValid(const uint8_t *data, size_t size)
-{
-	if (size < 8)
-		return false;
-	return !memcmp(data, "MUS\x1a", 4);
 }
 
 // ----------------------------------------------------------------------------
