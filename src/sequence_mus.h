@@ -6,12 +6,12 @@
 class SequenceMUS : public Sequence
 {
 public:
-	SequenceMUS(FILE *file, int offset = 0);
+	SequenceMUS(const uint8_t *data, size_t size);
 	
 	void reset();
 	uint32_t update(OPLPlayer& player);
 	
-	static bool isValid(FILE *file, int offset = 0);
+	static bool isValid(const uint8_t *data, size_t size);
 	
 private:
 	uint8_t m_data[1 << 16];

@@ -6,7 +6,7 @@
 class Sequence
 {
 public:
-	Sequence(FILE *file)
+	Sequence()
 	{ 
 		m_atEnd = false;
 		m_songNum = 0;
@@ -14,8 +14,9 @@ public:
 	virtual ~Sequence();
 	
 	// load a sequence from the given path/file
-	static Sequence* load(const char *path, int offset = 0);
-	static Sequence* load(FILE *path, int offset = 0);
+	static Sequence* load(const char *path);
+	static Sequence* load(FILE *path, int offset = 0, size_t size = 0);
+	static Sequence* load(const uint8_t *data, size_t size);
 	
 	// reset track to beginning
 	virtual void reset() { m_atEnd = false; }

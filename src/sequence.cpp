@@ -9,26 +9,45 @@
 Sequence::~Sequence() {}
 
 // ----------------------------------------------------------------------------
-Sequence* Sequence::load(const char *path, int offset)
+Sequence* Sequence::load(const char *path)
 {
 	FILE *file = fopen(path, "rb");
 	if (!file) return nullptr;
 	
-	Sequence *seq = load(file, offset);
+	Sequence *seq = load(file);
 	
 	fclose(file);
 	return seq;
 }
 
 // ----------------------------------------------------------------------------
-Sequence* Sequence::load(FILE *file, int offset)
+Sequence* Sequence::load(FILE *file, int offset, size_t size)
 {
-	if (SequenceMUS::isValid(file, offset))
-		return new SequenceMUS(file, offset);
-	else if (SequenceMID::isValid(file, offset))
-		return new SequenceMID(file, offset);
-	else if (SequenceXMI::isValid(file, offset))
-		return new SequenceXMI(file, offset);
+	if (!size)
+	{
+		fseek(file, 0, SEEK_END);
+		if (ftell(file) < 0)
+			return nullptr;
+		size = ftell(file) - offset;
+	}
+	
+	fseek(file, offset, SEEK_SET);
+	std::vector<uint8_t> data(size);
+	if (fread(data.data(), 1, size, file) != size)
+		return nullptr;
+
+	return load(data.data(), size);
+}
+
+// ----------------------------------------------------------------------------
+Sequence* Sequence::load(const uint8_t *data, size_t size)
+{
+	if (SequenceMUS::isValid(data, size))
+		return new SequenceMUS(data, size);
+	else if (SequenceMID::isValid(data, size))
+		return new SequenceMID(data, size);
+	else if (SequenceXMI::isValid(data, size))
+		return new SequenceXMI(data, size);
 	
 	return nullptr;
 }

@@ -10,7 +10,7 @@
 class MIDTrack
 {
 public:
-	MIDTrack(FILE *file, uint32_t size, SequenceMID* sequence);
+	MIDTrack(const uint8_t *data, size_t size, SequenceMID* sequence);
 	~MIDTrack();
 	
 	void reset();
@@ -32,10 +32,11 @@ private:
 };
 
 // ----------------------------------------------------------------------------
-MIDTrack::MIDTrack(FILE *file, uint32_t size, SequenceMID *sequence)
+MIDTrack::MIDTrack(const uint8_t *data, size_t size, SequenceMID *sequence)
 {
 	m_data = new uint8_t[size];
-	m_size = fread(m_data, 1, size, file);
+	m_size = size;
+	memcpy(m_data, data, size);
 	m_sequence = sequence;
 	
 	reset();
@@ -168,35 +169,10 @@ uint32_t MIDTrack::update(OPLPlayer& player)
 }
 
 // ----------------------------------------------------------------------------
-SequenceMID::SequenceMID(FILE *file, int offset)
-	: Sequence(file)
+SequenceMID::SequenceMID(const uint8_t *data, size_t size)
+	: Sequence()
 {
-	uint8_t bytes[10] = {0};
-	
-	fseek(file, offset + 4, SEEK_SET);
-	if (fread(bytes, 1, 10, file) == 10)
-	{
-		uint32_t len = READ_U32BE(bytes, 0);
-		
-		m_type = READ_U16BE(bytes, 4);
-		uint16_t numTracks = READ_U16BE(bytes, 6);
-		m_ticksPerBeat = READ_U16BE(bytes, 8);
-		
-		fseek(file, offset + len + 8, SEEK_SET);
-		
-		for (unsigned i = 0; i < numTracks; i++)
-		{
-			memset(bytes, 0, 10);
-			if (fread(bytes, 1, 8, file) != 8)
-				break;
-			
-			if (memcmp(bytes, "MTrk", 4))
-				break;
-			
-			len = READ_U32BE(bytes, 4);
-			m_tracks.push_back(new MIDTrack(file, len, this));
-		}
-	}
+	readTracks(data, size);
 	setDefaults();
 }
 
@@ -208,24 +184,93 @@ SequenceMID::~SequenceMID()
 }
 
 // ----------------------------------------------------------------------------
-bool SequenceMID::isValid(FILE *file, int offset)
+bool SequenceMID::isValid(const uint8_t *data, size_t size)
 {
-	uint8_t bytes[10] = {0};
-	
-	fseek(file, offset, SEEK_SET);
-	if (fread(bytes, 1, 10, file) != 10)
+	if (size < 12)
 		return false;
 	
-	if (memcmp(bytes, "MThd", 4))
-		return false;
+	if (!memcmp(data, "MThd", 4))
+	{
+		uint32_t len = READ_U32BE(data, 4);
+		if (len < 6) return false;
+		
+		uint16_t type = READ_U16BE(data, 8);
+		if (type > 2) return false;
+		
+		return true;
+	}
+	else if (!memcmp(data, "RIFF", 4)
+	      && !memcmp(data + 8, "RMID", 4))
+	{
+		return true;
+	}
+
+	return false;
+}
+
+// ----------------------------------------------------------------------------
+void SequenceMID::readTracks(const uint8_t *data, size_t size)
+{
+	// need at least the MIDI header + one track header
+	if (size < 23)
+		return;
 	
-	uint32_t len = READ_U32BE(bytes, 4);
-	if (len < 6) return false;
-	
-	uint16_t type = READ_U16BE(bytes, 8);
-	if (type > 2) return false;
-	
-	return true;
+	if (!memcmp(data, "RIFF", 4))
+	{
+		uint32_t offset = 12;
+		while (offset + 8 < size)
+		{
+			const uint8_t *bytes = data + offset;
+			uint32_t chunkLen = bytes[4] | (bytes[5] << 8) | (bytes[6] << 16) | (bytes[7] << 24);
+			chunkLen = (chunkLen + 1) & ~1;
+			
+			// move to next subchunk
+			offset += chunkLen + 8;
+			if (offset > size)
+			{
+				// try to handle a malformed/truncated chunk
+				chunkLen -= (offset - size);
+				offset = size;
+			}
+			
+			if (!memcmp(bytes, "data", 4))
+			{
+				if (isValid(bytes + 8, chunkLen))
+					readTracks(bytes + 8, chunkLen);
+				break;
+			}
+		}
+	}
+	else
+	{
+		uint32_t len = READ_U32BE(data, 4);
+		
+		m_type = READ_U16BE(data, 8);
+		uint16_t numTracks = READ_U16BE(data, 10);
+		m_ticksPerBeat = READ_U16BE(data, 12);
+		
+		uint32_t offset = len + 8;
+		for (unsigned i = 0; i < numTracks; i++)
+		{
+			if (offset + 8 >= size)
+				break;
+			
+			const uint8_t *bytes = data + offset;
+			if (memcmp(bytes, "MTrk", 4))
+				break;
+			
+			len = READ_U32BE(bytes, 4);
+			offset += len + 8;
+			if (offset > size)
+			{
+				// try to handle a malformed/truncated chunk
+				len -= (offset - size);
+				offset = size;
+			}
+			
+			m_tracks.push_back(new MIDTrack(bytes + 8, len, this));
+		}
+	}
 }
 
 // ----------------------------------------------------------------------------
@@ -281,7 +326,7 @@ uint32_t SequenceMID::update(OPLPlayer& player)
 		tickDelay   = m_tracks[m_songNum]->update(player);
 		tracksAtEnd = m_tracks[m_songNum]->atEnd();
 	}
-		
+	
 	if (tracksAtEnd)
 	{
 		reset();
@@ -297,4 +342,3 @@ uint32_t SequenceMID::update(OPLPlayer& player)
 	double samplesPerTick = player.sampleRate() / m_ticksPerSec;	
 	return round(tickDelay * samplesPerTick);
 }
-

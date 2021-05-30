@@ -72,11 +72,22 @@ public:
 	void setSampleRate(uint32_t rate);
 	void setGain(double gain);
 	
-	bool loadSequence(const char* path, int offset = 0);
-	bool loadSequence(FILE *file, int offset = 0);
+	// load MIDI data from the specified path
+	bool loadSequence(const char* path);
+	// load MIDI data from an already opened file, optionally at a given offset
+	// if 'size' is 0, the full file will be read (starting from 'offset')
+	bool loadSequence(FILE *file, int offset = 0, size_t size = 0);
+	// load MIDI data from a block of memory
+	bool loadSequence(const uint8_t *data, size_t size);
 	
-	bool loadPatches(const char* path, int offset = 0);
-	bool loadPatches(FILE *file, int offset = 0);
+	// load instrument patches from the specified path
+	bool loadPatches(const char* path);
+	// load instrument patches from an already opened file,
+	// optionally at a given offset
+	// if 'size' is 0, the full file will be read (starting from 'offset')
+	bool loadPatches(FILE *file, int offset = 0, size_t size = 0);
+	// load instrument patches from a block of memory
+	bool loadPatches(const uint8_t *data, size_t size);
 	
 	void generate(float *data, unsigned numSamples);
 	void generate(int16_t *data, unsigned numSamples);

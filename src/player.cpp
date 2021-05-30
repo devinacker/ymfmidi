@@ -63,33 +63,48 @@ void OPLPlayer::setGain(double gain)
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPlayer::loadSequence(const char* path, int offset)
+bool OPLPlayer::loadSequence(const char* path)
 {
 	delete m_sequence;
-	m_sequence = Sequence::load(path, offset);
+	m_sequence = Sequence::load(path);
 	
 	return m_sequence != nullptr;
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPlayer::loadSequence(FILE *file, int offset)
+bool OPLPlayer::loadSequence(FILE *file, int offset, size_t size)
 {
 	delete m_sequence;
-	m_sequence = Sequence::load(file, offset);
+	m_sequence = Sequence::load(file, offset, size);
 	
 	return m_sequence != nullptr;
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPlayer::loadPatches(const char* path, int offset)
+bool OPLPlayer::loadSequence(const uint8_t *data, size_t size)
 {
-	return OPLPatch::load(path, m_patches, offset);
+	delete m_sequence;
+	m_sequence = Sequence::load(data, size);
+	
+	return m_sequence != nullptr;
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPlayer::loadPatches(FILE *file, int offset)
+bool OPLPlayer::loadPatches(const char* path)
 {
-	return OPLPatch::load(file, m_patches, offset);
+	return OPLPatch::load(m_patches, path);
+}
+
+// ----------------------------------------------------------------------------
+bool OPLPlayer::loadPatches(FILE *file, int offset, size_t size)
+{
+	return OPLPatch::load(m_patches, file, offset, size);
+}
+
+// ----------------------------------------------------------------------------
+bool OPLPlayer::loadPatches(const uint8_t *data, size_t size)
+{
+	return OPLPatch::load(m_patches, data, size);
 }
 
 // ----------------------------------------------------------------------------
@@ -459,7 +474,7 @@ OPLVoice* OPLPlayer::findVoice(uint8_t channel, const OPLPatch *patch)
 	if (found) return found;
 	// last resort - just find any old voice at all
 	
-		for (auto& voice : m_voices)
+	for (auto& voice : m_voices)
 	{
 		if (patch->fourOp && !voice.fourOpPrimary)
 			continue;

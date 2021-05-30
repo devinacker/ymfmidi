@@ -1,15 +1,16 @@
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 #include "patches.h"
 
 // ----------------------------------------------------------------------------
-bool OPLPatch::load(const char *path, OPLPatchSet& patches, int offset)
+bool OPLPatch::load(OPLPatchSet& patches, const char *path)
 {
 	FILE *file = fopen(path, "rb");
 	if (!file) return false;
 
-	bool ok = load(file, patches, offset);
+	bool ok = load(patches, file);
 	
 	fclose(file);
 	
@@ -17,49 +18,68 @@ bool OPLPatch::load(const char *path, OPLPatchSet& patches, int offset)
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPatch::load(FILE *file, OPLPatchSet& patches, int offset)
+bool OPLPatch::load(OPLPatchSet& patches, FILE *file, int offset, size_t size)
 {
-	return loadWOPL(file, patches, offset)
-	    || loadOP2(file, patches, offset)
-	    || loadAIL(file, patches, offset)
-	    || loadTMB(file, patches, offset);
+	if (!size)
+	{
+		fseek(file, 0, SEEK_END);
+		if (ftell(file) < 0)
+			return false;
+		size = ftell(file) - offset;
+	}
+	
+	fseek(file, offset, SEEK_SET);
+	std::vector<uint8_t> data(size);
+	if (fread(data.data(), 1, size, file) != size)
+		return false;
+
+	return load(patches, data.data(), size);
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPatch::loadWOPL(FILE *file, OPLPatchSet& patches, int offset)
+bool OPLPatch::load(OPLPatchSet& patches, const uint8_t *data, size_t size)
 {
-	uint8_t bytes[66] = {0};
-	
-	fseek(file, offset, SEEK_SET);
-	if (fread(bytes, 1, 19, file) != 19)
+	return loadWOPL(patches, data, size)
+	    || loadOP2(patches, data, size)
+	    || loadAIL(patches, data, size)
+	    || loadTMB(patches, data, size);
+}
+
+// ----------------------------------------------------------------------------
+bool OPLPatch::loadWOPL(OPLPatchSet& patches, const uint8_t *data, size_t size)
+{
+	if (size < 19)
 		return false;
-	if (strcmp((const char*)bytes, "WOPL3-BANK"))
+	if (strcmp((const char*)data, "WOPL3-BANK"))
 		return false;
 	
 	// mixed endianness? why???
-	uint16_t version   = bytes[11] | (bytes[12] << 8);
-	uint16_t numMelody = (bytes[13] << 8) | bytes[14];
-	uint16_t numPerc   = (bytes[15] << 8) | bytes[16];
+	uint16_t version   = data[11] | (data[12] << 8);
+	uint16_t numMelody = (data[13] << 8) | data[14];
+	uint16_t numPerc   = (data[15] << 8) | data[16];
 	
 	if (version > 3)
 		return false;
 	
 	// currently not supported: global LFO flags, volume model options
 	
-	const uint32_t bankOffset  = offset + 19;
+	const uint32_t bankOffset  = 19;
 	const uint32_t patchOffset = bankOffset + 34 * (numMelody + numPerc);
 	
 	const unsigned instSize = (version >= 3) ? 66 : 62;
+	const unsigned bankInfoSize = (version >= 2) ? 34 : 0;
+	
+	if (size < (numMelody + numPerc) * (128 * instSize + bankInfoSize))
+		return false;
 	
 	for (unsigned i = 0; i < 128 * (numMelody + numPerc); i++)
 	{
+		const uint8_t *bytes;
 		unsigned key = i & 0x7f;
 		if (version >= 2)
 		{
 			const unsigned bank = i >> 7;
-			fseek(file, bankOffset + 34 * bank, SEEK_SET);
-			if (fread(bytes, 1, 34, file) != 34)
-				return false;
+			bytes = data + bankOffset + 34 * bank;
 
 			if (bank >= numMelody) // percussion banks (use LSB)
 				key |= (bytes[32] << 8) | 0x80;
@@ -69,9 +89,7 @@ bool OPLPatch::loadWOPL(FILE *file, OPLPatchSet& patches, int offset)
 				key |= (bytes[33] << 8);
 		}
 
-		fseek(file, patchOffset + instSize * i, SEEK_SET);
-		if (fread(bytes, 1, instSize, file) != instSize)
-			return false;
+		bytes = data + patchOffset + instSize * i;
 		
 		// ignore other data for this patch if it's a blank instrument
 		// *or* if one of the rhythm mode bits is set (not supported here)
@@ -83,7 +101,6 @@ bool OPLPatch::loadWOPL(FILE *file, OPLPatchSet& patches, int offset)
 		patch = OPLPatch();
 		
 		// patch names
-		bytes[31] = '\0';
 		if (bytes[0])
 			patch.name = (const char*)bytes;
 		else
@@ -121,14 +138,12 @@ bool OPLPatch::loadWOPL(FILE *file, OPLPatchSet& patches, int offset)
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPatch::loadOP2(FILE *file, OPLPatchSet& patches, int offset)
+bool OPLPatch::loadOP2(OPLPatchSet& patches, const uint8_t *data, size_t size)
 {
-	uint8_t bytes[36] = {0};
-
-	fseek(file, offset, SEEK_SET);
-	if (fread(bytes, 1, 8, file) != 8)
+	if (size < 175 * (36 + 32) + 8)
 		return false;
-	if (strncmp((const char*)bytes, "#OPL_II#", 8))
+	
+	if (strncmp((const char*)data, "#OPL_II#", 8))
 		return false;
 
 	// read data for all patches (128 melodic + 47 percussion)
@@ -142,9 +157,7 @@ bool OPLPatch::loadOP2(FILE *file, OPLPatchSet& patches, int offset)
 		patch = OPLPatch();
 		
 		// seek to patch data
-		fseek(file, offset + (36*i) + 8, SEEK_SET);
-		if (fread(bytes, 1, 36, file) != 36)
-			return false;
+		const uint8_t *bytes = data + (36*i) + 8;
 		
 		// read the common data for both 2op voices
 		// flag bit 0 is "fixed pitch" (for drums), but it's seemingly only used for drum patches anyway, so ignore it?
@@ -185,36 +198,29 @@ bool OPLPatch::loadOP2(FILE *file, OPLPatchSet& patches, int offset)
 		}
 		
 		// seek to patch name
-		fseek(file, offset + (32*i) + (36*175) + 8, SEEK_SET);
-		if (fread(bytes, 1, 32, file) == 32)
-		{
-			bytes[31] = '\0';
-			if (bytes[0])
-				patch.name = (const char*)bytes;
-			else
-				patch.name = names[key];
-		}
+		bytes = data + (32*i) + (36*175) + 8;
+		if (bytes[0])
+			patch.name = (const char*)bytes;
 		else
-		{
 			patch.name = names[key];
-		}
-	//	printf("Read patch: %s\n", bytes);
 	}
 	
 	return true;
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPatch::loadAIL(FILE *file, OPLPatchSet& patches, int offset)
+bool OPLPatch::loadAIL(OPLPatchSet& patches, const uint8_t *data, size_t size)
 {
-	fseek(file, offset, SEEK_SET);
+	int index = 0;
 	
 	while (true)
 	{
-		uint16_t key;
-		uint8_t entry[6];
-		if (fread(entry, 1, 6, file) != 6)
+		if (size < index * 6)
 			return false;
+		
+		const uint8_t *entry = data + (index * 6);
+		uint16_t key;
+		
 		if (entry[0] == 0xff && entry[1] == 0xff)
 			return true; // end of patches
 		else if (entry[1] == 0x7f)
@@ -227,23 +233,21 @@ bool OPLPatch::loadAIL(FILE *file, OPLPatchSet& patches, int offset)
 		patch = OPLPatch();
 		patch.name = names[key & 0xff];
 		
-		unsigned currentPos = ftell(file);
 		uint32_t patchPos = entry[2] | (entry[3] << 8) | (entry[4] << 16) | (entry[5] << 24);
-		fseek(file, patchPos + offset, SEEK_SET);
-		
-		uint8_t bytes[0x19];
-		// try to read a 4op patch's worth of data, even if it is actually a 2op patch
-		// and only fail if we read less than we needed to
-		if (fread(bytes, 1, 0x19, file) < bytes[0])
+		if (size < patchPos)
 			return false;
 		
-		if (bytes[0] == 0x0e)
+		const uint8_t *bytes = data + patchPos;
+		
+		if (size < patchPos + bytes[0])
+			return false;
+		else if (bytes[0] == 0x0e)
 			patch.fourOp = false;
 		else if (bytes[0] == 0x19)
 			patch.fourOp = true;
 		else
 			return false;
-		fseek(file, currentPos, SEEK_SET);
+		index++;
 		
 		patch.voice[0].tune = patch.voice[1].tune = (int8_t)bytes[2] - 12;
 		patch.voice[0].conn = bytes[8] & 0x0f;
@@ -276,9 +280,10 @@ bool OPLPatch::loadAIL(FILE *file, OPLPatchSet& patches, int offset)
 }
 
 // ----------------------------------------------------------------------------
-bool OPLPatch::loadTMB(FILE *file, OPLPatchSet& patches, int offset)
+bool OPLPatch::loadTMB(OPLPatchSet& patches, const uint8_t *data, size_t size)
 {
-	fseek(file, offset, SEEK_SET);
+	if (size < 256 * 13)
+		return false;
 	
 	for (uint16_t key = 0; key < 256; key++)
 	{
@@ -287,9 +292,7 @@ bool OPLPatch::loadTMB(FILE *file, OPLPatchSet& patches, int offset)
 		patch = OPLPatch();
 		patch.name = names[key];
 		
-		uint8_t bytes[13];
-		if (fread(bytes, 1, 13, file) != 13)
-			return false;
+		const uint8_t *bytes = data + (key * 13);
 		
 		// since this format has no identifying info, we can only really reject it
 		// if it has invalid values in a few spots

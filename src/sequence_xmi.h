@@ -8,7 +8,7 @@ class XMITrack;
 class SequenceXMI : public Sequence
 {
 public:
-	SequenceXMI(FILE *file, int offset = 0);
+	SequenceXMI(const uint8_t *data, size_t size);
 	~SequenceXMI();
 	
 	void reset();
@@ -18,10 +18,10 @@ public:
 	
 	void setUsecPerBeat(uint32_t usec);
 	
-	static bool isValid(FILE *file, int offset = 0);
+	static bool isValid(const uint8_t *data, size_t size);
 	
 private:
-	uint32_t readRootChunk(FILE *file);
+	uint32_t readRootChunk(const uint8_t *data, size_t size);
 	void setDefaults();
 
 	std::vector<XMITrack*> m_tracks;

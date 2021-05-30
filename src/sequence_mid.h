@@ -8,7 +8,7 @@ class MIDTrack;
 class SequenceMID : public Sequence
 {
 public:
-	SequenceMID(FILE *file, int offset = 0);
+	SequenceMID(const uint8_t *data, size_t size);
 	~SequenceMID();
 	
 	void reset();
@@ -18,11 +18,12 @@ public:
 	
 	void setUsecPerBeat(uint32_t usec);
 	
-	static bool isValid(FILE *file, int offset = 0);
-	
-private:
-	void setDefaults();
+	static bool isValid(const uint8_t *data, size_t size);
 
+private:
+	void readTracks(const uint8_t *data, size_t size);
+	void setDefaults();
+	
 	std::vector<MIDTrack*> m_tracks;
 	
 	uint16_t m_type;

@@ -4,32 +4,34 @@
 #include <cstring>
 
 // ----------------------------------------------------------------------------
-SequenceMUS::SequenceMUS(FILE *file, int offset)
-	: Sequence(file)
+SequenceMUS::SequenceMUS(const uint8_t *data, size_t size)
+	: Sequence()
 {
-	memset(m_data, 0xFF, sizeof(m_data));
-	uint8_t header[4] = {0};
+	// cheap safety measure - fill the whole song buffer w/ "end of track" commands
+	// (m_pos is 16 bits, so a malformed track will either hit this or just wrap around)
+	memset(m_data, 0x60, sizeof(m_data));
 	
-	fseek(file, offset + 4, SEEK_SET);
-	if (fread(header, 1, 4, file) == 4)
+	if (size > 8)
 	{
-		uint16_t length = header[0] | (header[1] << 8);
-		uint16_t pos    = header[2] | (header[3] << 8);
+		uint16_t length = data[4] | (data[5] << 8);
+		uint16_t pos    = data[6] | (data[7] << 8);
 		
-		fseek(file, offset + pos, SEEK_SET);
-		(void)fread(m_data, 1, length, file);
+		if (pos < size)
+		{
+			if (pos + length > size)
+				length = size - pos;
+			memcpy(m_data, data + pos, length);
+		}
 	}
 	setDefaults();
 }
 
 // ----------------------------------------------------------------------------
-bool SequenceMUS::isValid(FILE *file, int offset)
+bool SequenceMUS::isValid(const uint8_t *data, size_t size)
 {
-	uint8_t bytes[4];
-	fseek(file, offset, SEEK_SET);
-	if (fread(bytes, 1, 4, file) != 4)
+	if (size < 8)
 		return false;
-	return !memcmp(bytes, "MUS\x1a", 4);
+	return !memcmp(data, "MUS\x1a", 4);
 }
 
 // ----------------------------------------------------------------------------
@@ -50,11 +52,13 @@ void SequenceMUS::setDefaults()
 uint32_t SequenceMUS::update(OPLPlayer& player)
 {
 	uint8_t event, channel, data, param;
+	uint16_t lastPos;
 	
 	m_atEnd = false;
 	
 	do
 	{
+		lastPos = m_pos;
 		event = m_data[m_pos++];
 		channel = event & 0xf;
 		
@@ -126,8 +130,7 @@ uint32_t SequenceMUS::update(OPLPlayer& player)
 			m_pos++;
 			break;
 		}
-	
-	} while (!(event & 0x80));
+	} while (!(event & 0x80) && (m_pos > lastPos));
 	
 	// read delay in ticks, convert to # of samples
 	uint32_t tickDelay = 0;
@@ -136,7 +139,15 @@ uint32_t SequenceMUS::update(OPLPlayer& player)
 		event = m_data[m_pos++];
 		tickDelay <<= 7;
 		tickDelay |= (event & 0x7f);
-	} while (event & 0x80);
+	} while ((event & 0x80) && (m_pos > lastPos));
+	
+	if (m_pos < lastPos)
+	{
+		// premature end of track, 16 bit position overflowed
+		reset();
+		m_atEnd = true;
+		return 0;
+	}
 	
 	double samplesPerTick = player.sampleRate() / 140.0;
 	return round(tickDelay * samplesPerTick);

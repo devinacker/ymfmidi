@@ -10,7 +10,7 @@
 class XMITrack
 {
 public:
-	XMITrack(FILE *file, uint32_t size, SequenceXMI* sequence);
+	XMITrack(const uint8_t *data, size_t size, SequenceXMI* sequence);
 	~XMITrack();
 	
 	void reset();
@@ -39,10 +39,11 @@ private:
 };
 
 // ----------------------------------------------------------------------------
-XMITrack::XMITrack(FILE *file, uint32_t size, SequenceXMI *sequence)
+XMITrack::XMITrack(const uint8_t *data, size_t size, SequenceXMI *sequence)
 {
 	m_data = new uint8_t[size];
-	m_size = fread(m_data, 1, size, file);
+	m_size = size;
+	memcpy(m_data, data, size);
 	m_sequence = sequence;
 	
 	reset();
@@ -71,8 +72,7 @@ void XMITrack::advance(uint32_t time)
 	
 	m_delay -= time;
 	for (auto& note : m_notes)
-		if (note.delay != INT_MAX)
-			note.delay -= time;
+		note.delay -= time;
 }
 
 // ----------------------------------------------------------------------------
@@ -224,15 +224,14 @@ uint32_t XMITrack::update(OPLPlayer& player)
 }
 
 // ----------------------------------------------------------------------------
-SequenceXMI::SequenceXMI(FILE *file, int offset)
-	: Sequence(file)
+SequenceXMI::SequenceXMI(const uint8_t *data, size_t size)
+	: Sequence()
 {
-	fseek(file, offset, SEEK_SET);
 	uint32_t chunkSize;
-	while ((chunkSize = readRootChunk(file)) != 0)
+	while ((chunkSize = readRootChunk(data, size)) != 0)
 	{
-		offset += chunkSize;
-		fseek(file, offset, SEEK_SET);
+		data += chunkSize;
+		size -= chunkSize;
 	}
 	
 	setDefaults();
@@ -246,60 +245,67 @@ SequenceXMI::~SequenceXMI()
 }
 
 // ----------------------------------------------------------------------------
-uint32_t SequenceXMI::readRootChunk(FILE *file)
+uint32_t SequenceXMI::readRootChunk(const uint8_t *data, size_t size)
 {
-	uint8_t bytes[12] = {0};
-	uint32_t rootLen = 0;
-	uint32_t rootEnd;
-	
-	if (fread(bytes, 1, 12, file) == 12)
+	// need at least a root chunk and one subchunk (and its contents)
+	if (size > 12 + 8)
 	{
-		rootLen = READ_U32BE(bytes, 4);
-		rootEnd = ftell(file) + rootLen - 4;
+		// length of the root chunk
+		uint32_t rootLen = READ_U32BE(data, 4);
+		rootLen = (rootLen + 1) & ~1;
+		// offset to the current sub-chunk
+		uint32_t offset = 12;
+		// offset to the data after the root chunk
+		uint32_t rootEnd = std::min(rootLen + 8, (uint32_t)size);
 		
-		if (!memcmp(bytes, "FORM", 4))
+		if (!memcmp(data, "FORM", 4))
 		{
 			uint32_t chunkLen;
 		
-			while (ftell(file) < rootEnd)
+			while (offset < rootEnd)
 			{
-				if (fread(bytes, 1, 8, file) != 8)
-					break;
+				const uint8_t *bytes = data + offset;
 				
 				chunkLen = READ_U32BE(bytes, 4);
+				chunkLen = (chunkLen + 1) & ~1;
+				
+				// move to next subchunk
+				offset += chunkLen + 8;
+				if (offset > rootEnd)
+				{
+					// try to handle a malformed/truncated chunk
+					chunkLen -= (offset - rootEnd);
+					offset = rootEnd;
+				}
 				
 				if (!memcmp(bytes, "EVNT", 4))
-					m_tracks.push_back(new XMITrack(file, chunkLen, this));
-				else
-					fseek(file, chunkLen, SEEK_CUR);
+					m_tracks.push_back(new XMITrack(bytes + 8, chunkLen, this));
 			}
 		}
-		else if (!memcmp(bytes, "CAT ", 4))
+		else if (!memcmp(data, "CAT ", 4))
 		{
-			while (ftell(file) < rootEnd)
+			while (offset < rootEnd)
 			{
-				readRootChunk(file);
+				offset += readRootChunk(data + offset, size - offset);
 			}
 		}
 		
-		return rootLen + 8;
+		return rootEnd;
 	}
 	
-	return rootLen;
+	return 0;
 }
 
 // ----------------------------------------------------------------------------
-bool SequenceXMI::isValid(FILE *file, int offset)
+bool SequenceXMI::isValid(const uint8_t *data, size_t size)
 {
-	uint8_t bytes[12] = {0};
-	
-	fseek(file, offset, SEEK_SET);
-	if (fread(bytes, 1, 12, file) != 12)
+	// need at least 2 root chunks and one EVNT chunk header
+	if (size < 12)
 		return false;
 	
-	if (memcmp(bytes,     "FORM", 4))
+	if (memcmp(data,     "FORM", 4))
 		return false;
-	if (memcmp(bytes + 8, "XDIR", 4))
+	if (memcmp(data + 8, "XDIR", 4))
 		return false;
 	
 	return true;
@@ -337,9 +343,16 @@ unsigned SequenceXMI::numSongs() const
 // ----------------------------------------------------------------------------
 uint32_t SequenceXMI::update(OPLPlayer& player)
 {
-	uint32_t tickDelay = m_tracks[m_songNum]->update(player);
+	bool atEnd = true;
+	uint32_t tickDelay = 0;
 	
-	if (m_tracks[m_songNum]->atEnd())
+	if (m_songNum < m_tracks.size())
+	{
+		tickDelay = m_tracks[m_songNum]->update(player);
+		atEnd = m_tracks[m_songNum]->atEnd();
+	}
+	
+	if (atEnd)
 	{
 		reset();
 		m_atEnd = true;

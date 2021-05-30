@@ -1,6 +1,7 @@
 #ifndef __PATCHES_H
 #define __PATCHES_H
 
+#include <stddef.h>
 #include <string>
 #include <unordered_map>
 
@@ -34,15 +35,16 @@ struct OPLPatch
 	// default names
 	static const char* names[256];
 	
-	static bool load(const char *path, OPLPatchSet& patches, int offset = 0);
-	static bool load(FILE *file, OPLPatchSet& patches, int offset = 0);
+	static bool load(OPLPatchSet& patches, const char *path);
+	static bool load(OPLPatchSet& patches, FILE *file, int offset = 0, size_t size = 0);
+	static bool load(OPLPatchSet& patches, const uint8_t *data, size_t size);
 
 private:
 	// individual format loaders
-	static bool loadWOPL(FILE *file, OPLPatchSet& patches, int offset = 0);
-	static bool loadOP2(FILE *file, OPLPatchSet& patches, int offset = 0);
-	static bool loadAIL(FILE *file, OPLPatchSet& patches, int offset = 0);
-	static bool loadTMB(FILE *file, OPLPatchSet& patches, int offset = 0);
+	static bool loadWOPL(OPLPatchSet& patches, const uint8_t *data, size_t size);
+	static bool loadOP2(OPLPatchSet& patches, const uint8_t *data, size_t size);
+	static bool loadAIL(OPLPatchSet& patches, const uint8_t *data, size_t size);
+	static bool loadTMB(OPLPatchSet& patches, const uint8_t *data, size_t size);
 };
 
 #endif // __PATCHES_H

@@ -93,7 +93,7 @@ int main(int argc, char **argv)
 	int numChips = 1;
 	unsigned songNum = 0;
 
-//	printf("ymfmidi v" VERSION " - " __DATE__ "\n");
+	printf("ymfmidi v" VERSION " - " __DATE__ "\n");
 
 	char opt;
 	while ((opt = getopt_long(argc, argv, ":hq1s:o:n:b:g:r:", options, nullptr)) != -1)
