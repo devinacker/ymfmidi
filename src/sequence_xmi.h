@@ -3,8 +3,6 @@
 
 #include "sequence_mid.h"
 
-class XMITrack;
-
 class SequenceXMI : public SequenceMID
 {
 public:

@@ -1,6 +1,5 @@
 #include "sequence_xmi.h"
 
-#include <cmath>
 #include <cstring>
 
 #define READ_U16BE(data, pos) ((data[pos] << 8) | data[pos+1])

@@ -1,6 +1,7 @@
 #include <cstdio>
 
 #include "sequence.h"
+#include "sequence_hmp.h"
 #include "sequence_mid.h"
 #include "sequence_mus.h"
 #include "sequence_xmi.h"
@@ -50,6 +51,8 @@ Sequence* Sequence::load(const uint8_t *data, size_t size)
 		seq = new SequenceMID();
 	else if (SequenceXMI::isValid(data, size))
 		seq = new SequenceXMI();
+	else if (SequenceHMP::isValid(data, size))
+		seq = new SequenceHMP();
 	
 	if (seq)
 		seq->read(data, size);
