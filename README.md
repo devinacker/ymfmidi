@@ -12,8 +12,10 @@ ymfmidi is a MIDI player based on the OPL3 emulation core from [ymfm](https://gi
 * Can output to WAV files
 * Can play files containing multiple songs (XMI, MIDI format 2)
 * Supported sequence formats:
+    * `.hmi`, `.hmp` HMI Sound Operating System
     * `.mid` Standard MIDI files (format 0 or 1)
     * `.mus` DMX sound system / Doom engine
+    * `.rmi` Microsoft RIFF MIDI
     * `.xmi` Miles Sound System / Audio Interface Library
 * Supported instrument patch formats:
     * `.ad`, `.opl` Miles Sound System / Audio Interface Library
@@ -33,7 +35,7 @@ For standalone usage instructions, run the player with no arguments. The player 
 To incorporate ymfmidi into your own programs, include everything in the `src` and `ymfm` directories (except for `src/main.cpp` and `src/console.*`), preferably in its own subdirectory somewhere. After that, somewhere in your code:
 * `#include "player.h"`
 * Create an instance of `OPLPlayer`, optionally specifying a number of chips to emulate (the default is 1)
-* Call the `loadSequence` and `loadPatches` methods to load music and instrument data from a path or an existing `FILE*`
+* Call the `loadSequence` and `loadPatches` methods to load music and instrument data from a path, an existing `FILE*`, or a buffer in memory
 * (Optional) Call the `setLoop`, `setSampleRate`, and `setGain` methods to set up playback parameters
 * Periodically call one of the `generate` methods to output audio in either signed 16-bit or floating-point format
 * (Optional) Call the `reset` method to restart playback at the beginning

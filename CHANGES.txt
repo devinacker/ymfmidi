@@ -1,3 +1,10 @@
+v0.4.0 [2021-05-31]
+- Added support for .hmi, .hmp, .rmi files
+- Fixed playback of .mus files with invalid control values
+- Player app now falls back to 16-bit audio if floating-point isn't supported
+- Player app UI handles long file names and instrument names a little better
+- OPLPlayer API now supports loading song/patch data from a buffer (using pointer/length pair)
+
 v0.3.0 [2021-05-27]
 - Added basic support for GS/XG/GM2 features
 - Added support for .xmi files
