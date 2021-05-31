@@ -11,7 +11,7 @@ class XMITrack : public MIDTrack
 public:
 	XMITrack(const uint8_t *data, size_t size, SequenceXMI* sequence);
 	
-private:
+protected:
 	uint32_t readDelay();
 };
 

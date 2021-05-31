@@ -21,6 +21,7 @@ protected:
 	uint32_t readVLQ();
 	virtual uint32_t readDelay() { return readVLQ(); }
 	int32_t minDelay();
+	virtual bool metaEvent(OPLPlayer& player);
 
 	SequenceMID *m_sequence;
 	uint8_t *m_data;

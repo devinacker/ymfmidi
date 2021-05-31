@@ -100,7 +100,6 @@ uint32_t MIDTrack::update(OPLPlayer& player)
 	while (m_delay <= 0)
 	{
 		uint8_t data[2];
-		uint32_t len;
 		MIDNote note;
 		
 		// make sure we have enough data left for one full event
@@ -145,39 +144,11 @@ uint32_t MIDTrack::update(OPLPlayer& player)
 			break;
 		
 		case 15: // sysex / meta event
-			if (m_status != 0xFF)
-			{
-				len = readVLQ();
-				if (m_pos + len < m_size)
-				{
-					if (m_status == 0xf0)
-						player.midiSysEx(m_data + m_pos, len);
-				}
-				else
-				{
-					m_atEnd = true;
-					return UINT_MAX;
-				}
+			if (!metaEvent(player))
+			{			
+				m_atEnd = true;
+				return UINT_MAX;
 			}
-			else
-			{
-				data[0] = m_data[m_pos++];
-				len = readVLQ();
-				
-				// end-of-track marker (or data just ran out)
-				if (data[0] == 0x2F || (m_pos + len >= m_size))
-				{
-					m_atEnd = true;
-					return UINT_MAX;
-				}
-				// tempo change
-				if (data[0] == 0x51)
-				{
-					m_sequence->setTimePerBeat(READ_U24BE(m_data, m_pos));
-				}
-			}
-			
-			m_pos += len;
 			break;
 		}
 		
@@ -185,6 +156,45 @@ uint32_t MIDTrack::update(OPLPlayer& player)
 	}
 
 	return minDelay();
+}
+
+// ----------------------------------------------------------------------------
+bool MIDTrack::metaEvent(OPLPlayer& player)
+{
+	uint32_t len;
+	
+	if (m_status != 0xFF)
+	{
+		len = readVLQ();
+		if (m_pos + len < m_size)
+		{
+			if (m_status == 0xf0)
+				player.midiSysEx(m_data + m_pos, len);
+		}
+		else
+		{
+			return false;
+		}
+	}
+	else
+	{
+		uint8_t data = m_data[m_pos++];
+		len = readVLQ();
+		
+		// end-of-track marker (or data just ran out)
+		if (data == 0x2F || (m_pos + len >= m_size))
+		{
+			return false;
+		}
+		// tempo change
+		if (data == 0x51)
+		{
+			m_sequence->setTimePerBeat(READ_U24BE(m_data, m_pos));
+		}
+	}
+	
+	m_pos += len;
+	return true;
 }
 
 // ----------------------------------------------------------------------------

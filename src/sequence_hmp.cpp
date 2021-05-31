@@ -9,7 +9,7 @@ class HMPTrack : public MIDTrack
 public:
 	HMPTrack(const uint8_t *data, size_t size, SequenceHMP* sequence);
 	
-private:
+protected:
 	uint32_t readDelay();
 };
 
@@ -66,7 +66,11 @@ void SequenceHMP::read(const uint8_t *data, size_t size)
 			break;
 		
 		uint32_t trackLen = READ_U32LE(data, offset + 4);
-		if ((trackLen <= 12) || (offset + trackLen >= size))
+		if (offset + trackLen >= size)
+			// try to handle a malformed/truncated chunk
+			trackLen = (size - offset);
+		
+		if (trackLen <= 12)
 			break;
 		
 		m_tracks.push_back(new HMPTrack(data + offset + 12, trackLen - 12, this));
