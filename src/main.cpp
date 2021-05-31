@@ -213,12 +213,17 @@ int main(int argc, char **argv)
 }
 
 // ----------------------------------------------------------------------------
+static SDL_AudioSpec g_audioSpec;
+
 static void audioCallback(void *data, uint8_t *stream, int len)
 {
-	memset(stream, 0, len);
+	memset(stream, g_audioSpec.silence, len);
 	
 	auto player = reinterpret_cast<OPLPlayer*>(data);
-	player->generate(reinterpret_cast<float*>(stream), len / (2 * sizeof(float)));
+	if (g_audioSpec.format == AUDIO_F32SYS)
+		player->generate(reinterpret_cast<float*>(stream), len / (2 * sizeof(float)));
+	else if (g_audioSpec.format == AUDIO_S16SYS)
+		player->generate(reinterpret_cast<int16_t*>(stream), len / (2 * sizeof(int16_t)));
 	
 	if (!g_looping)
 		g_running &= !player->atEnd();
@@ -231,17 +236,26 @@ static void mainLoopSDL(OPLPlayer *player, int bufferSize, bool interactive)
 	SDL_SetMainReady();
 	SDL_Init(SDL_INIT_AUDIO);
 	
-	SDL_AudioSpec want = {0};
-	SDL_AudioSpec have = {0};
+	SDL_AudioSpec spec = {0};
+	spec.freq     = player->sampleRate();
+	spec.format   = AUDIO_F32SYS;
+	spec.channels = 2;
+	spec.samples  = bufferSize;
+	spec.callback = audioCallback;
+	spec.userdata = player;
 	
-	want.freq = player->sampleRate();
-	want.format = AUDIO_F32;
-	want.channels = 2;
-	want.samples = bufferSize;
-	want.callback = audioCallback;
-	want.userdata = player;
-	SDL_OpenAudio(&want, &have);
-	// TODO: make sure audio format is supported...
+	if (SDL_OpenAudio(&spec, &g_audioSpec))
+	{
+		fprintf(stderr, "couldn't open audio device\n");
+		exit(1);
+	}
+	else if (g_audioSpec.format != AUDIO_F32SYS && g_audioSpec.format != AUDIO_S16SYS)
+	{
+		fprintf(stderr, "unsupported audio format (0x%x)\n", g_audioSpec.format);
+		exit(1);
+	}
+	
+	player->setSampleRate(g_audioSpec.freq);
 	
 	if (interactive)
 	{

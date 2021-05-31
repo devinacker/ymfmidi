@@ -9,6 +9,7 @@
 static HANDLE g_console;
 #else
 #include <sys/select.h>
+#include <sys/time.h>
 #include <termios.h>
 #include <unistd.h>
 
