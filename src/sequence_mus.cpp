@@ -106,6 +106,9 @@ uint32_t SequenceMUS::update(OPLPlayer& player)
 		case 4: // controller
 			data  = m_data[m_pos++] & 0x7f;
 			param = m_data[m_pos++];
+			// clamp CC param value - some tracks from tnt.wad have bad volume CCs
+			if (param > 0x7f)
+				param = 0x7f;
 			switch (data)
 			{
 			case 0: player.midiProgramChange(channel, param); break;
