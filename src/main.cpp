@@ -191,10 +191,14 @@ int main(int argc, char **argv)
 	{
 		consoleOpen();
 		consolePos(0);
+		printf("song: %-32.32s | patches: %-29.29s\n",
+			shortPath(songPath), shortPath(patchPath));
 	}
-	
-	printf("song: %-30s   | patches: %-30s\n",
-		shortPath(songPath), shortPath(patchPath));
+	else
+	{
+		printf("song:    %s\npatches: %s\n",
+			shortPath(songPath), shortPath(patchPath));
+	}
 
 	signal(SIGINT, quit);
 

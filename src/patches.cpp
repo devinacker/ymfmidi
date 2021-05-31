@@ -102,7 +102,7 @@ bool OPLPatch::loadWOPL(OPLPatchSet& patches, const uint8_t *data, size_t size)
 		
 		// patch names
 		if (bytes[0])
-			patch.name = (const char*)bytes;
+			patch.name = std::string((const char*)bytes, 31);
 		else
 			patch.name = names[key & 0xff];
 		
@@ -200,7 +200,7 @@ bool OPLPatch::loadOP2(OPLPatchSet& patches, const uint8_t *data, size_t size)
 		// seek to patch name
 		bytes = data + (32*i) + (36*175) + 8;
 		if (bytes[0])
-			patch.name = (const char*)bytes;
+			patch.name = std::string((const char*)bytes, 31);
 		else
 			patch.name = names[key];
 	}

@@ -225,7 +225,7 @@ void OPLPlayer::displayChannels()
 		const auto& channel = m_channels[i];
 		const OPLPatch *patch = findPatch(i, 0);
 	
-		printf("%3u | %-32s | %3u | %3u | ", i + 1, 
+		printf("%3u | %-32.32s | %3u | %3u | ", i + 1, 
 			channel.percussion ? "Percussion" : (patch ? patch->name.c_str() : ""),
 			channel.volume, channel.pan);
 		
@@ -255,7 +255,7 @@ void OPLPlayer::displayVoices()
 			printf("voice %2u: ", i + 1);
 			if (m_voices[i].channel)
 			{
-				printf("channel %2u, note %3u %c %-32s",
+				printf("channel %2u, note %3u %c %-32.32s",
 					m_voices[i].channel->num + 1, m_voices[i].note,
 					m_voices[i].on ? '*' : ' ',
 					m_voices[i].patch ? m_voices[i].patch->name.c_str() : "");
