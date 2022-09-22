@@ -71,6 +71,7 @@ public:
 	void setLoop(bool loop) { m_looping = loop; }
 	void setSampleRate(uint32_t rate);
 	void setGain(double gain);
+	void setFilter(double cutoff);
 	
 	// load MIDI data from the specified path
 	bool loadSequence(const char* path);
@@ -187,6 +188,11 @@ private:
 	uint32_t m_samplesLeft; // remaining samples until next midi event
 	// if we need to clock one of the OPLs between register writes, save the resulting sample
 	std::vector<std::queue<ymfm::ymf262::output_data>> m_sampleFIFO;
+	
+	// filter settings/state
+	double m_filterFreq, m_filterCoef;
+	int32_t m_lastIn[2] = {0}, m_lastOut[2] = {0};
+	float m_lastInF[2] = {0}, m_lastOutF[2] = {0};
 	
 	bool m_looping;
 	bool m_timePassed;

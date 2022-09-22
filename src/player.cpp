@@ -29,7 +29,8 @@ OPLPlayer::OPLPlayer(int numChips)
 	
 	m_samplePos = 0.0;
 	m_samplesLeft = 0;
-	setSampleRate(44100);
+	m_filterFreq = 5.0; // 5Hz default to reduce DC offset
+	setSampleRate(44100); // setup both sample step and filter coefficient
 	setGain(1.0);
 	
 	m_looping = false;
@@ -52,6 +53,7 @@ void OPLPlayer::setSampleRate(uint32_t rate)
 	m_sampleStep = (double)rate / rateOPL;
 	m_sampleRate = rate;
 	
+	setFilter(m_filterFreq);
 //	printf("OPL sample rate = %u / output sample rate = %u / step %02f\n", rateOPL, rate, m_sampleStep);
 }
 
@@ -60,6 +62,23 @@ void OPLPlayer::setGain(double gain)
 {
 	m_sampleGain = gain;
 	m_sampleScale = 32768.0 / gain;
+}
+
+// ----------------------------------------------------------------------------
+void OPLPlayer::setFilter(double cutoff)
+{
+	m_filterFreq = cutoff;
+	
+	if (m_filterFreq <= 0.0)
+	{
+		m_filterCoef = 1.0;
+	}
+	else
+	{
+		static const double pi = 3.14159265358979323846;
+		m_filterCoef = 1.0 / ((2 * pi * cutoff) / m_sampleRate + 1);
+	}
+//	printf("sample rate = %u / cutoff %f Hz / filter coef %f\n", m_sampleRate, cutoff, m_filterCoef);
 }
 
 // ----------------------------------------------------------------------------
@@ -111,20 +130,33 @@ bool OPLPlayer::loadPatches(const uint8_t *data, size_t size)
 void OPLPlayer::generate(float *data, unsigned numSamples)
 {
 	ymfm::ymf262::output_data output[m_numChips];
+	unsigned samp = 0;
 
-	while (numSamples)
+	while (samp < numSamples * 2)
 	{
 		updateMIDI(output);
 
-		while (m_samplePos >= 1.0 && numSamples > 0)
+		while (m_samplePos >= 1.0 && samp < numSamples * 2)
 		{
 			for (unsigned i = 0; i < m_numChips; i++)
 			{
-				data[0] += output[i].data[0] / m_sampleScale;
-				data[1] += output[i].data[1] / m_sampleScale;
+				data[samp]   += output[i].data[0] / m_sampleScale;
+				data[samp+1] += output[i].data[1] / m_sampleScale;
 			}
-			data += 2;
-			numSamples--;
+			
+			if (m_filterCoef < 1.0)
+			{
+				for (int i = 0; i < 2; i++)
+				{
+					float lastIn = m_lastInF[i];
+					m_lastInF[i] = data[samp+i];
+					
+					m_lastOutF[i] = m_filterCoef * (m_lastOutF[i] + data[samp+i] - lastIn);
+					data[samp+i] = m_lastOutF[i];
+				}
+			}
+			
+			samp += 2;
 			m_samplePos -= 1.0;
 			if (m_samplesLeft)
 				m_samplesLeft--;
@@ -136,12 +168,13 @@ void OPLPlayer::generate(float *data, unsigned numSamples)
 void OPLPlayer::generate(int16_t *data, unsigned numSamples)
 {
 	ymfm::ymf262::output_data output[m_numChips];
+	unsigned samp = 0;
 
-	while (numSamples)
+	while (samp < numSamples * 2)
 	{
 		updateMIDI(output);
 		
-		while (m_samplePos >= 1.0 && numSamples > 0)
+		while (m_samplePos >= 1.0 && samp < numSamples * 2)
 		{
 			int32_t samples[2] = {0};
 		
@@ -151,9 +184,22 @@ void OPLPlayer::generate(int16_t *data, unsigned numSamples)
 				samples[1] += (int32_t)output[i].data[1] * m_sampleGain;
 			}
 			
-			*data++ = ymfm::clamp(samples[0], -32768, 32767);
-			*data++ = ymfm::clamp(samples[1], -32768, 32767);
-			numSamples--;
+			if (m_filterCoef < 1.0)
+			{
+				for (int i = 0; i < 2; i++)
+				{
+					const int32_t lastIn = m_lastIn[i];
+					m_lastIn[i] = samples[i];
+					
+					m_lastOut[i] = m_filterCoef * (m_lastOut[i] + samples[i] - lastIn);
+					samples[i] = m_lastOut[i];
+				}
+			}
+
+			data[samp]   = ymfm::clamp(samples[0], -32768, 32767);
+			data[samp+1] = ymfm::clamp(samples[1], -32768, 32767);
+			
+			samp += 2;
 			m_samplePos -= 1.0;
 			if (m_samplesLeft)
 				m_samplesLeft--;

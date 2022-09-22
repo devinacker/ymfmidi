@@ -41,6 +41,7 @@ void usage()
 	"  -b / --buf <num>        set buffer size (default 4096)\n"
 	"  -g / --gain <num>       set gain amount (default 1.0)\n"
 	"  -r / --rate <num>       set sample rate (default 44100)\n"
+	"  -f / --filter <num>     set highpass cutoff in Hz (default 5.0)\n"
 	"\n"
 	);
 	
@@ -57,6 +58,7 @@ static const option options[] =
 	{"buf",       1, nullptr, 'b'},
 	{"gain",      1, nullptr, 'g'},
 	{"rate",      1, nullptr, 'r'},
+	{"filter",    1, nullptr, 'f'},
 	{0}
 };
 
@@ -90,13 +92,14 @@ int main(int argc, char **argv)
 	int sampleRate = 44100;
 	int bufferSize = 4096;
 	double gain = 1.0;
+	double filter = 5.0;
 	int numChips = 1;
 	unsigned songNum = 0;
 
 	printf("ymfmidi v" VERSION " - " __DATE__ "\n");
 
 	char opt;
-	while ((opt = getopt_long(argc, argv, ":hq1s:o:n:b:g:r:", options, nullptr)) != -1)
+	while ((opt = getopt_long(argc, argv, ":hq1s:o:n:b:g:r:f:", options, nullptr)) != -1)
 	{
 		switch (opt)
 		{
@@ -157,6 +160,15 @@ int main(int argc, char **argv)
 				exit(1);
 			}
 			break;
+		
+		case 'f':
+			filter = atof(optarg);
+			if (filter < 0.0)
+			{
+				fprintf(stderr, "invalid cutoff: %s\n", optarg);
+				exit(1);
+			}
+			break;
 		}
 	}
 	
@@ -184,6 +196,7 @@ int main(int argc, char **argv)
 	player->setLoop(g_looping);
 	player->setSampleRate(sampleRate);
 	player->setGain(gain);
+	player->setFilter(filter);
 	if (songNum > 0)
 		player->setSongNum(songNum - 1);
 	
@@ -361,7 +374,7 @@ static void mainLoopWAV(OPLPlayer *player, const char *path)
 	// fill in the rendered sample size and write the header
 	const uint32_t sampleRate = player->sampleRate();
 	const uint32_t byteRate = sampleRate * 4;
-	const uint32_t dataSize = numSamples * byteRate;
+	const uint32_t dataSize = numSamples * 4;
 	const uint32_t wavSize = dataSize + 36;
 	
 	char header[44] = {0};
