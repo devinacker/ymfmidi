@@ -37,6 +37,7 @@ void usage()
 	"                            (default 1)\n"
 	"  -o / --out <path>       output to WAV file (implies -q and -1)\n"
 	"\n"
+	"  -c / --chip <num>       set type of chip (1 = OPL, 2 = OPL2, 3 = OPL3; default 3)\n"
 	"  -n / --num <num>        set number of chips (default 1)\n"
 	"  -b / --buf <num>        set buffer size (default 4096)\n"
 	"  -g / --gain <num>       set gain amount (default 1.0)\n"
@@ -54,6 +55,7 @@ static const option options[] =
 	{"quiet",     0, nullptr, 'q'},
 	{"play-once", 0, nullptr, '1'}, 
 	{"song",      1, nullptr, 's'}, 
+	{"chip",      1, nullptr, 'c'},
 	{"num",       1, nullptr, 'n'},
 	{"buf",       1, nullptr, 'b'},
 	{"gain",      1, nullptr, 'g'},
@@ -93,13 +95,14 @@ int main(int argc, char **argv)
 	int bufferSize = 4096;
 	double gain = 1.0;
 	double filter = 5.0;
+	OPLPlayer::ChipType chipType = OPLPlayer::ChipOPL3;
 	int numChips = 1;
 	unsigned songNum = 0;
 
 	printf("ymfmidi v" VERSION " - " __DATE__ "\n");
 
 	char opt;
-	while ((opt = getopt_long(argc, argv, ":hq1s:o:n:b:g:r:f:", options, nullptr)) != -1)
+	while ((opt = getopt_long(argc, argv, ":hq1s:o:c:n:b:g:r:f:", options, nullptr)) != -1)
 	{
 		switch (opt)
 		{
@@ -123,6 +126,18 @@ int main(int argc, char **argv)
 		case 'o':
 			wavPath = optarg;
 			interactive = g_looping = false;
+			break;
+		
+		case 'c':
+			switch (atoi(optarg))
+			{
+			case 1: chipType = OPLPlayer::ChipOPL; break;
+			case 2: chipType = OPLPlayer::ChipOPL2; break;
+			case 3: chipType = OPLPlayer::ChipOPL3; break;
+			default:
+				fprintf(stderr, "invalid chip type\n");
+				exit(1);
+			}
 			break;
 		
 		case 'n':
@@ -179,7 +194,7 @@ int main(int argc, char **argv)
 	if (optind + 1 < argc)
 		patchPath = argv[optind + 1];
 	
-	auto player = new OPLPlayer(numChips);
+	auto player = new OPLPlayer(numChips, chipType);
 	
 	if (!player->loadSequence(songPath))
 	{

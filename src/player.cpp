@@ -15,16 +15,27 @@ static const unsigned oper_num[18] = {
 };
 
 // ----------------------------------------------------------------------------
-OPLPlayer::OPLPlayer(int numChips)
+OPLPlayer::OPLPlayer(int numChips, ChipType type)
 	: ymfm::ymfm_interface()
 {
-	m_numChips = numChips;
-	m_opl3.resize(numChips);
+	m_chipType = type;
+	if (type == ChipOPL3)
+	{
+		m_numChips = numChips;
+		m_voices.resize(numChips * 18);
+	}
+	else
+	{
+		// simulate two OPL2 on one OPL3, etc
+		m_numChips = (numChips + 1) / 2;
+		m_voices.resize(numChips * 9);
+	}
+	
+	m_opl3.resize(m_numChips);
 	for (auto& opl : m_opl3)
 		opl = new ymfm::ymf262(*this);
-	m_sampleFIFO.resize(numChips);
-		
-	m_voices.resize(numChips * 18);
+	m_sampleFIFO.resize(m_numChips);
+	
 	m_sequence = nullptr;
 	
 	m_samplePos = 0.0;
@@ -294,9 +305,10 @@ void OPLPlayer::displayChannels()
 // ----------------------------------------------------------------------------
 void OPLPlayer::displayVoices()
 {
-	for (int i = 0; i < 18; i++)
+	const unsigned numRows = std::min(18u, (unsigned)m_voices.size());
+	for (unsigned i = 0; i < numRows; i++)
 	{
-		if (m_numChips == 1)
+		if (m_voices.size() <= 18)
 		{
 			printf("voice %2u: ", i + 1);
 			if (m_voices[i].channel)
@@ -311,7 +323,7 @@ void OPLPlayer::displayVoices()
 				printf("%69s", "");
 			}
 		}
-		else if (m_numChips == 2)
+		else if (m_voices.size() <= 18*2)
 		{
 			for (int j = i; j < m_voices.size(); j += 18)
 			{
@@ -331,7 +343,7 @@ void OPLPlayer::displayVoices()
 					printf("        | ");
 			}
 		}
-		else if (m_numChips <= 4)
+		else if (m_voices.size() <= 18*4)
 		{
 			for (int j = i; j < m_voices.size(); j += 18)
 			{
@@ -351,7 +363,7 @@ void OPLPlayer::displayVoices()
 					printf(" | ");
 			}
 		}
-		else if (m_numChips <= 8)
+		else if (m_voices.size() <= 18*8)
 		{
 			for (int j = i; j < m_voices.size(); j += 18)
 			{
@@ -410,7 +422,6 @@ void OPLPlayer::reset()
 	{
 		m_opl3[i]->reset();
 		// enable OPL3 stuff
-		write(i, REG_TEST, 1 << 5);
 		write(i, REG_NEW, 1);
 	}
 		
@@ -426,11 +437,12 @@ void OPLPlayer::reset()
 	for (int i = 0; i < m_voices.size(); i++)
 	{
 		m_voices[i] = OPLVoice();
-	//	m_voices[i].channel = m_channels;
 		m_voices[i].chip = i / 18;
 		m_voices[i].num = voice_num[i % 18];
 		m_voices[i].op = oper_num[i % 18];
 		
+		// configure 4op voices (OPL3 mode only)
+		if (m_chipType != ChipOPL3) continue;
 		switch (i % 9)
 		{
 		case 0: case 1: case 2:
@@ -486,7 +498,7 @@ OPLVoice* OPLPlayer::findVoice(uint8_t channel, const OPLPatch *patch, uint8_t n
 	// (or voices that haven't ever been used yet)
 	for (auto& voice : m_voices)
 	{
-		if (patch->fourOp && !voice.fourOpPrimary)
+		if (useFourOp(patch) && !voice.fourOpPrimary)
 			continue;
 	
 		if (!voice.channel)
@@ -513,7 +525,7 @@ OPLVoice* OPLPlayer::findVoice(uint8_t channel, const OPLPatch *patch, uint8_t n
 	
 	for (auto& voice : m_voices)
 	{
-		if (patch->fourOp && !voice.fourOpPrimary)
+		if (useFourOp(patch) && !voice.fourOpPrimary)
 			continue;
 		
 		if ((voice.channel->num == channel || voice.patch == patch)
@@ -529,10 +541,10 @@ OPLVoice* OPLPlayer::findVoice(uint8_t channel, const OPLPatch *patch, uint8_t n
 	
 	for (auto& voice : m_voices)
 	{
-		if (patch->fourOp && !voice.fourOpPrimary)
+		if (useFourOp(patch) && !voice.fourOpPrimary)
 			continue;
 		// don't let a 2op instrument steal an active voice from a 4op one
-		if (!patch->fourOp && voice.on && voice.patch->fourOp)
+		if (!useFourOp(patch) && voice.on && useFourOp(voice.patch))
 			continue;
 		
 		if (voice.duration > duration)
@@ -588,6 +600,14 @@ const OPLPatch* OPLPlayer::findPatch(uint8_t channel, uint8_t note) const
 }
 
 // ----------------------------------------------------------------------------
+bool OPLPlayer::useFourOp(const OPLPatch *patch) const
+{
+	if (m_chipType == ChipOPL3)
+		return patch->fourOp;
+	return false;
+}
+
+// ----------------------------------------------------------------------------
 void OPLPlayer::updateChannelVoices(uint8_t channel, void(OPLPlayer::*func)(OPLVoice&))
 {
 	for (auto& voice : m_voices)
@@ -606,18 +626,18 @@ void OPLPlayer::updatePatch(OPLVoice& voice, const OPLPatch *newPatch, uint8_t n
 	
 	if (voice.patchVoice != &patchVoice)
 	{
-		bool oldFourOp = voice.patch ? voice.patch->fourOp : false;
+		bool oldFourOp = voice.patch ? useFourOp(voice.patch) : false;
 	
 		voice.patch = newPatch;
 		voice.patchVoice = &patchVoice;
 		
 		// update enable status for 4op channels on this chip
-		if (newPatch->fourOp != oldFourOp)
+		if (useFourOp(newPatch) != oldFourOp)
 		{
 			// if going from part of a 4op patch to a 2op one, kill the other one
 			OPLVoice *other = voice.fourOpOther;
 			if (other && other->patch
-				&& other->patch->fourOp && !newPatch->fourOp)
+				&& useFourOp(other->patch) && !useFourOp(newPatch))
 			{
 				silenceVoice(*other);
 			}
@@ -628,7 +648,7 @@ void OPLPlayer::updatePatch(OPLVoice& voice, const OPLPatch *newPatch, uint8_t n
 			{
 				if (m_voices[i].fourOpPrimary)
 				{
-					if (m_voices[i].patch && m_voices[i].patch->fourOp)
+					if (m_voices[i].patch && useFourOp(m_voices[i].patch))
 						enable |= bit;
 					bit <<= 1;
 				}
@@ -648,8 +668,16 @@ void OPLPlayer::updatePatch(OPLVoice& voice, const OPLPatch *newPatch, uint8_t n
 		write(voice.chip, REG_OP_SR + voice.op,     patchVoice.op_sr[0]);
 		write(voice.chip, REG_OP_SR + voice.op + 3, patchVoice.op_sr[1]);
 		// 0xe0: waveform
-		write(voice.chip, REG_OP_WAVEFORM + voice.op,     patchVoice.op_wave[0]);
-		write(voice.chip, REG_OP_WAVEFORM + voice.op + 3, patchVoice.op_wave[1]);
+		if (m_chipType == ChipOPL2)
+		{
+			write(voice.chip, REG_OP_WAVEFORM + voice.op,     patchVoice.op_wave[0] & 3);
+			write(voice.chip, REG_OP_WAVEFORM + voice.op + 3, patchVoice.op_wave[1] & 3);
+		}
+		else if (m_chipType == ChipOPL3)
+		{
+			write(voice.chip, REG_OP_WAVEFORM + voice.op,     patchVoice.op_wave[0]);
+			write(voice.chip, REG_OP_WAVEFORM + voice.op + 3, patchVoice.op_wave[1]);
+		}
 	}
 }
 
@@ -674,7 +702,7 @@ void OPLPlayer::updateVolume(OPLVoice& voice)
 	bool scale[2] = {0};
 	
 	// determine which operator(s) to scale based on the current operator settings
-	if (!voice.patch->fourOp)
+	if (!useFourOp(voice.patch))
 	{
 		// 2op FM (0): scale op 2 only
 		// 2op AM (1): scale op 1 and 2
@@ -722,10 +750,13 @@ void OPLPlayer::updatePanning(OPLVoice& voice)
 	
 	// 0xc0: output/feedback/mode
 	uint8_t pan = 0x30;
-	if (voice.channel->pan < 32)
-		pan = 0x10;
-	else if (voice.channel->pan >= 96)
-		pan = 0x20;
+	if (m_chipType == ChipOPL3)
+	{
+		if (voice.channel->pan < 32)
+			pan = 0x10;
+		else if (voice.channel->pan >= 96)
+			pan = 0x20;
+	}
 	
 	write(voice.chip, REG_VOICE_CNT + voice.num, voice.patchVoice->conn | pan);
 }
@@ -739,7 +770,7 @@ void OPLPlayer::updateFrequency(OPLVoice& voice)
 	};
 
 	if (!voice.patch || !voice.channel) return;
-	if (voice.patch->fourOp && !voice.fourOpPrimary) return;
+	if (useFourOp(voice.patch) && !voice.fourOpPrimary) return;
 	
 	int note = (!voice.channel->percussion ? voice.note : voice.patch->fixedNote)
 	         + voice.patchVoice->tune;
@@ -851,12 +882,12 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 	const OPLPatch *newPatch = findPatch(channel, note);
 	if (!newPatch) return;
 	
-	const int numVoices = ((newPatch->fourOp || newPatch->dualTwoOp) ? 2 : 1);
+	const int numVoices = ((useFourOp(newPatch) || newPatch->dualTwoOp) ? 2 : 1);
 
 	OPLVoice *voice = nullptr;
 	for (int i = 0; i < numVoices; i++)
 	{
-		if (voice && newPatch->fourOp && voice->fourOpOther)
+		if (voice && useFourOp(newPatch) && voice->fourOpOther)
 			voice = voice->fourOpOther;
 		else
 			voice = findVoice(channel, newPatch, note);
@@ -881,16 +912,16 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 		updatePanning(*voice);
 		
 		// for 4op instruments, don't key on until we've written both voices...
-		if (!newPatch->fourOp)
+		if (!useFourOp(newPatch))
 		{
 			updateFrequency(*voice);
 			runOneSample(voice->chip);
 		}
-		else if (newPatch->fourOp && i > 0)
+		else if (i > 0)
 		{
 			updateFrequency(*voice->fourOpOther);
 			runOneSample(voice->chip);
-		}		
+		}
 	}
 }
 

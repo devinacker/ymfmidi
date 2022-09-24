@@ -65,7 +65,14 @@ public:
 		GeneralMIDI2
 	};
 
-	OPLPlayer(int numChips = 1);
+	enum ChipType
+	{
+		ChipOPL,
+		ChipOPL2,
+		ChipOPL3
+	};
+
+	OPLPlayer(int numChips = 1, ChipType type = ChipOPL3);
 	virtual ~OPLPlayer();
 	
 	void setLoop(bool loop) { m_looping = loop; }
@@ -159,6 +166,9 @@ private:
 	// find the patch to use for a specific MIDI channel and note
 	const OPLPatch* findPatch(uint8_t channel, uint8_t note) const;
 
+	// determine whether this patch should be configured as 4op
+	bool useFourOp(const OPLPatch *patch) const;
+
 	// update a property of all currently playing voices on a MIDI channel
 	void updateChannelVoices(uint8_t channel, void(OPLPlayer::*func)(OPLVoice&));
 
@@ -179,6 +189,7 @@ private:
 
 	std::vector<ymfm::ymf262*> m_opl3;
 	unsigned m_numChips;
+	ChipType m_chipType;
 	
 	uint32_t m_sampleRate; // output sample rate (default 44.1k)
 	double m_sampleGain;
