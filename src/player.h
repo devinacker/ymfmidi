@@ -130,6 +130,7 @@ public:
 	
 	// misc. informational stuff
 	uint32_t sampleRate() const { return m_sampleRate; }
+	ChipType chipType() const { return m_chipType; }
 	const std::string& patchName(uint8_t num) { return m_patches[num].name; }
 	
 private:

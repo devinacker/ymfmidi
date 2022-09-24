@@ -370,6 +370,8 @@ static void mainLoopWAV(OPLPlayer *player, const char *path)
 	uint32_t numSamples = 0;
 	uint16_t samples[2];
 	char outSamples[4];
+	const unsigned bytesPerSample = ((player->chipType() == OPLPlayer::ChipOPL3) ? 4 : 2);
+	
 	while (!player->atEnd())
 	{
 		player->generate(reinterpret_cast<int16_t*>(samples), 1);
@@ -378,7 +380,7 @@ static void mainLoopWAV(OPLPlayer *player, const char *path)
 		outSamples[2] = samples[1];
 		outSamples[3] = samples[1] >> 8;
 		
-		if (fwrite(outSamples, 1, 4, wav) != 4)
+		if (fwrite(outSamples, 1, bytesPerSample, wav) != bytesPerSample)
 		{
 			fprintf(stderr, "writing WAV data failed\n");
 			exit(1);
@@ -388,8 +390,8 @@ static void mainLoopWAV(OPLPlayer *player, const char *path)
 	
 	// fill in the rendered sample size and write the header
 	const uint32_t sampleRate = player->sampleRate();
-	const uint32_t byteRate = sampleRate * 4;
-	const uint32_t dataSize = numSamples * 4;
+	const uint32_t byteRate = sampleRate * bytesPerSample;
+	const uint32_t dataSize = numSamples * bytesPerSample;
 	const uint32_t wavSize = dataSize + 36;
 	
 	char header[44] = {0};
@@ -414,7 +416,10 @@ static void mainLoopWAV(OPLPlayer *player, const char *path)
 	header[15] = ' ';
 	header[16] = 16; // chunk size
 	header[20] = 1;  // sample format (PCM)
-	header[22] = 2;  // stereo
+	if (bytesPerSample == 4)
+		header[22] = 2;  // stereo
+	else
+		header[22] = 1;  // mono
 	header[24] = (char)(sampleRate);
 	header[25] = (char)(sampleRate >> 8);
 	header[26] = (char)(sampleRate >> 16);
