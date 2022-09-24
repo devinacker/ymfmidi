@@ -477,7 +477,7 @@ void OPLPlayer::write(int chip, uint16_t addr, uint8_t data)
 }
 
 // ----------------------------------------------------------------------------
-OPLVoice* OPLPlayer::findVoice(uint8_t channel, const OPLPatch *patch)
+OPLVoice* OPLPlayer::findVoice(uint8_t channel, const OPLPatch *patch, uint8_t note)
 {
 	OPLVoice *found = nullptr;
 	uint32_t duration = 0;
@@ -492,11 +492,18 @@ OPLVoice* OPLPlayer::findVoice(uint8_t channel, const OPLPatch *patch)
 		if (!voice.channel)
 			return &voice;
 	
-		if (!voice.on && !voice.justChanged
-			&& voice.duration > duration)
+		if (!voice.on && !voice.justChanged)
 		{
-			found = &voice;
-			duration = voice.duration;
+			if (voice.channel->num == channel && voice.note == note)
+			{
+				// found an old voice that was using the same note and patch - use it again
+				return &voice;
+			}
+			if (voice.duration > duration)
+			{
+				found = &voice;
+				duration = voice.duration;
+			}
 		}
 	}
 	
@@ -852,7 +859,7 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 		if (voice && newPatch->fourOp && voice->fourOpOther)
 			voice = voice->fourOpOther;
 		else
-			voice = findVoice(channel, newPatch);
+			voice = findVoice(channel, newPatch, note);
 		if (!voice) continue; // ??
 		
 		if (voice->on)
