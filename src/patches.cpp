@@ -197,6 +197,10 @@ bool OPLPatch::loadOP2(OPLPatchSet& patches, const uint8_t *data, size_t size)
 			pos += 2;
 		}
 		
+		// fix for some bugged DMX patches (e.g. Doom II electric snare)
+		if (!(patch.voice[1].op_ad[0] | patch.voice[1].op_ad[1]))
+			patch.dualTwoOp = false;
+		
 		// seek to patch name
 		bytes = data + (32*i) + (36*175) + 8;
 		if (bytes[0])
