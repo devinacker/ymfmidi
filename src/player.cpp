@@ -785,15 +785,7 @@ void OPLPlayer::updateFrequency(OPLVoice& voice)
 	else if (octave > 0)
 		freq <<= octave;
 	
-	if (voice.channel->pitch > 0)
-		freq += freq * voice.channel->noteBendUp * voice.channel->pitch;
-	else if (voice.channel->pitch < 0)
-		freq += freq * voice.channel->noteBendDown * voice.channel->pitch;
-		
-	if (voice.patchVoice->finetune > 0)
-		freq += freq * MIDIChannel::defaultBendUp * voice.patchVoice->finetune;
-	else if (voice.patchVoice->finetune < 0)
-		freq += freq * MIDIChannel::defaultBendDown * voice.patchVoice->finetune;
+	freq *= voice.channel->pitch * voice.patchVoice->finetune;
 	
 	// convert the calculated frequency back to a block and F-number
 	octave = 0;
@@ -946,7 +938,10 @@ void OPLPlayer::midiNoteOff(uint8_t channel, uint8_t note)
 void OPLPlayer::midiPitchControl(uint8_t channel, double pitch)
 {
 //	printf("midiPitchControl: chn %u, val %.02f\n", channel, pitch);
-	m_channels[channel & 15].pitch = pitch;
+	MIDIChannel& ch = m_channels[channel & 15];
+	
+	ch.basePitch = pitch;
+	ch.pitch = midiCalcBend(pitch * ch.bendRange);
 	updateChannelVoices(channel, &OPLPlayer::updateFrequency);
 }
 
@@ -979,8 +974,8 @@ void OPLPlayer::midiControlChange(uint8_t channel, uint8_t control, uint8_t valu
 	case 6:
 		if (ch.rpn == 0)
 		{
-			midiSetBendRange(channel, value);
-			updateChannelVoices(channel, &OPLPlayer::updateFrequency);
+			ch.bendRange = value;
+			midiPitchControl(channel, ch.basePitch);
 		}
 		break;
 	
@@ -1066,10 +1061,7 @@ void OPLPlayer::midiSysEx(const uint8_t *data, uint32_t length)
 }
 
 // ----------------------------------------------------------------------------
-void OPLPlayer::midiSetBendRange(uint8_t channel, uint8_t semitones)
+double OPLPlayer::midiCalcBend(double semitones)
 {
-	MIDIChannel& ch = m_channels[channel & 15];
-	
-	ch.noteBendUp   = pow(2, semitones / 12.0) - 1;
-	ch.noteBendDown = 1 - (1 / (ch.noteBendUp + 1));
+	return pow(2, semitones / 12.0);
 }

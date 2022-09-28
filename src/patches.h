@@ -17,7 +17,7 @@ struct PatchVoice
 	uint8_t op_wave[2] = {0};  // regs 0xE0+
 	
 	int8_t tune = 0; // MIDI note offset
-	double finetune = 0.0;
+	double finetune = 1.0; // frequency multiplier
 };
 
 typedef std::unordered_map<uint16_t, struct OPLPatch> OPLPatchSet;

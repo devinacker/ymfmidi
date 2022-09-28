@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "patches.h"
+#include "player.h"
 
 // ----------------------------------------------------------------------------
 bool OPLPatch::load(OPLPatchSet& patches, const char *path)
@@ -110,7 +111,7 @@ bool OPLPatch::loadWOPL(OPLPatchSet& patches, const uint8_t *data, size_t size)
 		patch.voice[0].tune     = (int8_t)bytes[33] - 12;
 		patch.voice[1].tune     = (int8_t)bytes[35] - 12;
 		patch.velocity          = (int8_t)bytes[36];
-		patch.voice[1].finetune = (int8_t)bytes[37] / 128.0;
+		patch.voice[1].finetune = OPLPlayer::midiCalcBend((int8_t)bytes[37] / 64.0);
 		patch.fixedNote         = bytes[38];
 		patch.fourOp            = (bytes[39] & 3) == 1;
 		patch.dualTwoOp         = (bytes[39] & 3) == 3;
@@ -163,7 +164,7 @@ bool OPLPatch::loadOP2(OPLPatchSet& patches, const uint8_t *data, size_t size)
 		// flag bit 0 is "fixed pitch" (for drums), but it's seemingly only used for drum patches anyway, so ignore it?
 		patch.dualTwoOp = (bytes[0] & 4);
 		// second voice detune
-		patch.voice[1].finetune = (bytes[2] / 128.0) - 1.0;
+		patch.voice[1].finetune = OPLPlayer::midiCalcBend((int8_t)(bytes[2] - 128) / 64.0);
 	
 		patch.fixedNote = bytes[3];
 		
