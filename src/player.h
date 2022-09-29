@@ -149,7 +149,7 @@ private:
 		REG_NEW         = 0x105,
 	};
 
-	void updateMIDI(ymfm::ymf262::output_data *output);
+	void updateMIDI();
 
 	void runOneSample(int chip);
 
@@ -195,6 +195,7 @@ private:
 	double m_sampleStep; // ratio of OPL sample rate to output sample rate (usually < 1.0)
 	double m_samplePos; // number of pending output samples (when >= 1.0, output one)
 	uint32_t m_samplesLeft; // remaining samples until next midi event
+	std::vector<ymfm::ymf262::output_data> m_output; // output sample data
 	// if we need to clock one of the OPLs between register writes, save the resulting sample
 	std::vector<std::queue<ymfm::ymf262::output_data>> m_sampleFIFO;
 	

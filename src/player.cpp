@@ -34,6 +34,7 @@ OPLPlayer::OPLPlayer(int numChips, ChipType type)
 	m_opl3.resize(m_numChips);
 	for (auto& opl : m_opl3)
 		opl = new ymfm::ymf262(*this);
+	m_output.resize(m_numChips);
 	m_sampleFIFO.resize(m_numChips);
 	
 	m_sequence = nullptr;
@@ -140,19 +141,18 @@ bool OPLPlayer::loadPatches(const uint8_t *data, size_t size)
 // ----------------------------------------------------------------------------
 void OPLPlayer::generate(float *data, unsigned numSamples)
 {
-	ymfm::ymf262::output_data output[m_numChips];
 	unsigned samp = 0;
 
 	while (samp < numSamples * 2)
 	{
-		updateMIDI(output);
+		updateMIDI();
 
 		while (m_samplePos >= 1.0 && samp < numSamples * 2)
 		{
 			for (unsigned i = 0; i < m_numChips; i++)
 			{
-				data[samp]   += output[i].data[0] / m_sampleScale;
-				data[samp+1] += output[i].data[1] / m_sampleScale;
+				data[samp]   += m_output[i].data[0] / m_sampleScale;
+				data[samp+1] += m_output[i].data[1] / m_sampleScale;
 			}
 			
 			if (m_filterCoef < 1.0)
@@ -178,12 +178,11 @@ void OPLPlayer::generate(float *data, unsigned numSamples)
 // ----------------------------------------------------------------------------
 void OPLPlayer::generate(int16_t *data, unsigned numSamples)
 {
-	ymfm::ymf262::output_data output[m_numChips];
 	unsigned samp = 0;
 
 	while (samp < numSamples * 2)
 	{
-		updateMIDI(output);
+		updateMIDI();
 		
 		while (m_samplePos >= 1.0 && samp < numSamples * 2)
 		{
@@ -191,8 +190,8 @@ void OPLPlayer::generate(int16_t *data, unsigned numSamples)
 		
 			for (unsigned i = 0; i < m_numChips; i++)
 			{
-				samples[0] += (int32_t)output[i].data[0] * m_sampleGain;
-				samples[1] += (int32_t)output[i].data[1] * m_sampleGain;
+				samples[0] += (int32_t)m_output[i].data[0] * m_sampleGain;
+				samples[1] += (int32_t)m_output[i].data[1] * m_sampleGain;
 			}
 			
 			if (m_filterCoef < 1.0)
@@ -219,7 +218,7 @@ void OPLPlayer::generate(int16_t *data, unsigned numSamples)
 }
 
 // ----------------------------------------------------------------------------
-void OPLPlayer::updateMIDI(ymfm::ymf262::output_data *output)
+void OPLPlayer::updateMIDI()
 {
 	while (!m_samplesLeft && m_sequence && !atEnd())
 	{	
@@ -242,11 +241,11 @@ void OPLPlayer::updateMIDI(ymfm::ymf262::output_data *output)
 		{
 			if (m_sampleFIFO[i].empty())
 			{
-				m_opl3[i]->generate(&output[i]);
+				m_opl3[i]->generate(&m_output[i]);
 			}
 			else
 			{
-				output[i] = m_sampleFIFO[i].front();
+				m_output[i] = m_sampleFIFO[i].front();
 				m_sampleFIFO[i].pop();
 			}
 		}
