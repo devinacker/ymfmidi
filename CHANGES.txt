@@ -1,3 +1,10 @@
+v0.5.0 [2022-09-28]
+- Added option to simulate OPL or OPL2 instead of OPL3
+- Added configurable highpass filter to reduce DC offset (default cutoff is 5Hz)
+- Fixed calculation of pitch bends, especially for non-default bend ranges
+- Improved voice allocation behavior slightly (again)
+- .op2 (DMX) patch loader now sanitizes some patches with bogus 2-voice settings
+
 v0.4.0 [2021-05-31]
 - Added support for .hmi, .hmp, .rmi files
 - Fixed playback of .mus files with invalid control values

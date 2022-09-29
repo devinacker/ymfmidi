@@ -11,7 +11,7 @@ extern "C" {
 #include "console.h"
 #include "player.h"
 
-#define VERSION "0.4.0"
+#define VERSION "0.5.0"
 
 static bool g_running = true;
 static bool g_paused = false;
