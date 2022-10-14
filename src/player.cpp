@@ -581,7 +581,7 @@ const OPLPatch* OPLPlayer::findPatch(uint8_t channel, uint8_t note) const
 	const MIDIChannel &ch = m_channels[channel & 15];
 
 	if (ch.percussion)
-		key = 0x80 | note;
+		key = 0x80 | note | (ch.patchNum << 8);
 	else
 		key = ch.patchNum | (ch.bank << 8);
 	
