@@ -58,7 +58,10 @@ Sequence* Sequence::load(const uint8_t *data, size_t size)
 		seq = new SequenceHMP();
 	
 	if (seq)
+	{
 		seq->read(data, size);
+		seq->reset();
+	}
 	
 	return seq;
 }
