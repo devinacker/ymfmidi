@@ -34,15 +34,14 @@ OPLPlayer::OPLPlayer(int numChips, ChipType type)
 	m_opl3.resize(m_numChips);
 	for (auto& opl : m_opl3)
 		opl = new ymfm::ymf262(*this);
-	m_output.resize(m_numChips);
 	m_sampleFIFO.resize(m_numChips);
 	
 	m_sequence = nullptr;
 	
 	m_samplePos = 0.0;
 	m_samplesLeft = 0;
-	m_filterFreq = 5.0; // 5Hz default to reduce DC offset
-	setSampleRate(44100); // setup both sample step and filter coefficient
+	m_hpFilterFreq = 5.0; // 5Hz default to reduce DC offset
+	setSampleRate(44100); // setup both sample step and filter coefficients
 	setGain(1.0);
 	
 	m_looping = false;
@@ -65,7 +64,7 @@ void OPLPlayer::setSampleRate(uint32_t rate)
 	m_sampleStep = (double)rate / rateOPL;
 	m_sampleRate = rate;
 	
-	setFilter(m_filterFreq);
+	setFilter(m_hpFilterFreq);
 //	printf("OPL sample rate = %u / output sample rate = %u / step %02f\n", rateOPL, rate, m_sampleStep);
 }
 
@@ -73,24 +72,23 @@ void OPLPlayer::setSampleRate(uint32_t rate)
 void OPLPlayer::setGain(double gain)
 {
 	m_sampleGain = gain;
-	m_sampleScale = 32768.0 / gain;
 }
 
 // ----------------------------------------------------------------------------
 void OPLPlayer::setFilter(double cutoff)
 {
-	m_filterFreq = cutoff;
+	m_hpFilterFreq = cutoff;
 	
-	if (m_filterFreq <= 0.0)
+	if (m_hpFilterFreq <= 0.0)
 	{
-		m_filterCoef = 1.0;
+		m_hpFilterCoef = 1.0;
 	}
 	else
 	{
 		static const double pi = 3.14159265358979323846;
-		m_filterCoef = 1.0 / ((2 * pi * cutoff) / m_sampleRate + 1);
+		m_hpFilterCoef = 1.0 / ((2 * pi * cutoff) / m_sampleRate + 1);
 	}
-//	printf("sample rate = %u / cutoff %f Hz / filter coef %f\n", m_sampleRate, cutoff, m_filterCoef);
+//	printf("sample rate = %u / cutoff %f Hz / filter coef %f\n", m_sampleRate, cutoff, m_hpFilterCoef);
 }
 
 // ----------------------------------------------------------------------------
@@ -146,24 +144,25 @@ void OPLPlayer::generate(float *data, unsigned numSamples)
 	while (samp < numSamples * 2)
 	{
 		updateMIDI();
+		
+		float samples[2];
+		samples[0] = m_output.data[0] / 32767.0;
+		samples[1] = m_output.data[1] / 32767.0;
 
 		while (m_samplePos >= 1.0 && samp < numSamples * 2)
 		{
-			for (unsigned i = 0; i < m_numChips; i++)
-			{
-				data[samp]   += m_output[i].data[0] / m_sampleScale;
-				data[samp+1] += m_output[i].data[1] / m_sampleScale;
-			}
+			data[samp]   = samples[0];
+			data[samp+1] = samples[1];
 			
-			if (m_filterCoef < 1.0)
+			if (m_hpFilterCoef < 1.0)
 			{
 				for (int i = 0; i < 2; i++)
 				{
-					float lastIn = m_lastInF[i];
-					m_lastInF[i] = data[samp+i];
+					const float lastIn = m_hpLastInF[i];
+					m_hpLastInF[i] = data[samp+i];
 					
-					m_lastOutF[i] = m_filterCoef * (m_lastOutF[i] + data[samp+i] - lastIn);
-					data[samp+i] = m_lastOutF[i];
+					m_hpLastOutF[i] = m_hpFilterCoef * (m_hpLastOutF[i] + data[samp+i] - lastIn);
+					data[samp+i] = m_hpLastOutF[i];
 				}
 			}
 			
@@ -186,28 +185,20 @@ void OPLPlayer::generate(int16_t *data, unsigned numSamples)
 		
 		while (m_samplePos >= 1.0 && samp < numSamples * 2)
 		{
-			int32_t samples[2] = {0};
-		
-			for (unsigned i = 0; i < m_numChips; i++)
-			{
-				samples[0] += (int32_t)m_output[i].data[0] * m_sampleGain;
-				samples[1] += (int32_t)m_output[i].data[1] * m_sampleGain;
-			}
-			
-			if (m_filterCoef < 1.0)
+			if (m_hpFilterCoef < 1.0)
 			{
 				for (int i = 0; i < 2; i++)
 				{
-					const int32_t lastIn = m_lastIn[i];
-					m_lastIn[i] = samples[i];
+					const int32_t lastIn = m_hpLastIn[i];
+					m_hpLastIn[i] = m_output.data[i];
 					
-					m_lastOut[i] = m_filterCoef * (m_lastOut[i] + samples[i] - lastIn);
-					samples[i] = m_lastOut[i];
+					m_hpLastOut[i] = m_hpFilterCoef * (m_hpLastOut[i] + m_output.data[i] - lastIn);
+					m_output.data[i] = m_hpLastOut[i];
 				}
 			}
 
-			data[samp]   = ymfm::clamp(samples[0], -32768, 32767);
-			data[samp+1] = ymfm::clamp(samples[1], -32768, 32767);
+			data[samp]   = ymfm::clamp(m_output.data[0], -32768, 32767);
+			data[samp+1] = ymfm::clamp(m_output.data[1], -32768, 32767);
 			
 			samp += 2;
 			m_samplePos -= 1.0;
@@ -235,22 +226,61 @@ void OPLPlayer::updateMIDI()
 			m_timePassed = true;
 	}
 
+	if (m_samplePos >= 1.0)
+	{
+		return; // existing output still waiting to be consumed
+	}
+	
+	m_output.data[0] = m_lastOut[0];
+	m_output.data[1] = m_lastOut[1];
+	
 	while (m_samplePos < 1.0)
 	{
+		ymfm::ymf262::output_data output;
+		int32_t samples[2] = {0};
+		
 		for (unsigned i = 0; i < m_numChips; i++)
 		{
 			if (m_sampleFIFO[i].empty())
 			{
-				m_opl3[i]->generate(&m_output[i]);
+				m_opl3[i]->generate(&output);
 			}
 			else
 			{
-				m_output[i] = m_sampleFIFO[i].front();
+				output = m_sampleFIFO[i].front();
 				m_sampleFIFO[i].pop();
 			}
+			
+			samples[0] += output.data[0];
+			samples[1] += output.data[1];
 		}
+		
 		m_samplePos += m_sampleStep;
+		
+		if (m_samplePos <= 1.0 || m_sampleStep > 1.0)
+		{
+			// full input sample (if downsampling), or always (if upsampling)
+			m_output.data[0] += samples[0];
+			m_output.data[1] += samples[1];
+			m_lastOut[0] = m_lastOut[1] = 0;
+		}
+		else
+		{
+			// partial input sample (if downsampling):
+			// apply a fraction of the sample value now and save the rest for later
+			// based on how far past the output sample point we are
+			const double remainder = (m_samplePos - (int)m_samplePos) / m_sampleStep;
+			m_output.data[0] += samples[0] * (1 - remainder);
+			m_output.data[1] += samples[1] * (1 - remainder);
+			m_lastOut[0] = samples[0] * remainder;
+			m_lastOut[1] = samples[1] * remainder;
+		}
 	}
+	
+	// apply gain and use sample rate in/out ratio to scale all accumulated samples
+	const double step = std::min(m_sampleStep, 1.0);
+	m_output.data[0] *= m_sampleGain * step;
+	m_output.data[1] *= m_sampleGain * step;
 }
 
 // ----------------------------------------------------------------------------

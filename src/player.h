@@ -191,18 +191,19 @@ private:
 	
 	uint32_t m_sampleRate; // output sample rate (default 44.1k)
 	double m_sampleGain;
-	double m_sampleScale; // convert 16-bit samples to float (includes gain value)
 	double m_sampleStep; // ratio of OPL sample rate to output sample rate (usually < 1.0)
 	double m_samplePos; // number of pending output samples (when >= 1.0, output one)
 	uint32_t m_samplesLeft; // remaining samples until next midi event
-	std::vector<ymfm::ymf262::output_data> m_output; // output sample data
+	ymfm::ymf262::output_data m_output; // output sample data
 	// if we need to clock one of the OPLs between register writes, save the resulting sample
 	std::vector<std::queue<ymfm::ymf262::output_data>> m_sampleFIFO;
 	
-	// filter settings/state
-	double m_filterFreq, m_filterCoef;
-	int32_t m_lastIn[2] = {0}, m_lastOut[2] = {0};
-	float m_lastInF[2] = {0}, m_lastOutF[2] = {0};
+	// last output for downsampling
+	int32_t m_lastOut[2] = {0};
+	// recursive highpass filter to remove/reduce DC offset
+	double m_hpFilterFreq, m_hpFilterCoef;
+	int32_t m_hpLastIn[2] = {0}, m_hpLastOut[2] = {0};
+	float m_hpLastInF[2] = {0}, m_hpLastOutF[2] = {0};
 	
 	bool m_looping;
 	bool m_timePassed;
