@@ -167,6 +167,9 @@ private:
 	// determine whether this patch should be configured as 4op
 	bool useFourOp(const OPLPatch *patch) const;
 
+	// determine which operator(s) to scale based on the current operator settings
+	std::pair<bool, bool> activeCarriers(const OPLVoice& voice) const;
+
 	// update a property of all currently playing voices on a MIDI channel
 	void updateChannelVoices(uint8_t channel, void(OPLPlayer::*func)(OPLVoice&));
 

@@ -535,12 +535,17 @@ OPLVoice* OPLPlayer::findVoice(uint8_t channel, const OPLPatch *patch, uint8_t n
 	
 		if (!voice.on && !voice.justChanged)
 		{
-			if (voice.channel->num == channel && voice.note == note)
+			if (voice.channel->num == channel && voice.note == note
+				&& voice.duration < UINT_MAX)
 			{
-				// found an old voice that was using the same note and patch - use it again
-				return &voice;
+				// found an old voice that was using the same note and patch
+				// don't immediately use it, but make it a high priority candidate for later
+				// (to help avoid pop/click artifacts when retriggering a recently off note)
+				silenceVoice(voice);
+				if (useFourOp(voice.patch) && voice.fourOpOther)
+					silenceVoice(*voice.fourOpOther);
 			}
-			if (voice.duration > duration)
+			else if (voice.duration > duration)
 			{
 				found = &voice;
 				duration = voice.duration;
@@ -637,6 +642,46 @@ bool OPLPlayer::useFourOp(const OPLPatch *patch) const
 }
 
 // ----------------------------------------------------------------------------
+std::pair<bool, bool> OPLPlayer::activeCarriers(const OPLVoice& voice) const
+{
+	bool scale[2] = {0};
+	const auto patchVoice = voice.patchVoice;
+
+	if (!patchVoice)
+	{
+		scale[0] = scale[1] = false;
+	}
+	else if (!useFourOp(voice.patch))
+	{
+		// 2op FM (0): scale op 2 only
+		// 2op AM (1): scale op 1 and 2
+		scale[0] = (patchVoice->conn & 1);
+		scale[1] = true;
+	}
+	else if (voice.fourOpPrimary)
+	{
+		// 4op FM+FM (0, 0): don't scale op 1 or 2
+		// 4op AM+FM (1, 0): scale op 1 only
+		// 4op FM+AM (0, 1): scale op 2 only
+		// 4op AM+AM (1, 1): scale op 1 only
+		scale[0] = (voice.patch->voice[0].conn & 1);
+		scale[1] = (voice.patch->voice[1].conn & 1) && !scale[0];
+	}
+	else
+	{
+		// 4op FM+FM (0, 0): scale op 4 only
+		// 4op AM+FM (1, 0): scale op 4 only
+		// 4op FM+AM (0, 1): scale op 4 only
+		// 4op AM+AM (1, 1): scale op 3 and 4
+		scale[0] = (voice.patch->voice[0].conn & 1)
+		        && (voice.patch->voice[1].conn & 1);
+		scale[1] = true;
+	}
+
+	return std::make_pair(scale[0], scale[1]);
+}
+
+// ----------------------------------------------------------------------------
 void OPLPlayer::updateChannelVoices(uint8_t channel, void(OPLPlayer::*func)(OPLVoice&))
 {
 	for (auto& voice : m_voices)
@@ -693,9 +738,6 @@ void OPLPlayer::updatePatch(OPLVoice& voice, const OPLPatch *newPatch, uint8_t n
 		// 0x60: attack/decay
 		write(voice.chip, REG_OP_AD + voice.op,     patchVoice.op_ad[0]);
 		write(voice.chip, REG_OP_AD + voice.op + 3, patchVoice.op_ad[1]);
-		// 0x80: sustain/release
-		write(voice.chip, REG_OP_SR + voice.op,     patchVoice.op_sr[0]);
-		write(voice.chip, REG_OP_SR + voice.op + 3, patchVoice.op_sr[1]);
 		// 0xe0: waveform
 		if (m_chipType == ChipOPL2)
 		{
@@ -708,6 +750,11 @@ void OPLPlayer::updatePatch(OPLVoice& voice, const OPLPatch *newPatch, uint8_t n
 			write(voice.chip, REG_OP_WAVEFORM + voice.op + 3, patchVoice.op_wave[1]);
 		}
 	}
+
+	// 0x80: sustain/release
+	// update even for the same patch in case silenceVoice was called on this voice
+	write(voice.chip, REG_OP_SR + voice.op,     patchVoice.op_sr[0]);
+	write(voice.chip, REG_OP_SR + voice.op + 3, patchVoice.op_sr[1]);
 }
 
 // ----------------------------------------------------------------------------
@@ -724,48 +771,20 @@ void OPLPlayer::updateVolume(OPLVoice& voice)
 
 	if (!voice.patch || !voice.channel) return;
 	
-	auto patchVoice = voice.patchVoice;
-
 	uint8_t atten = opl_volume_map[(voice.velocity * voice.channel->volume) >> 9];
 	uint8_t level;
-	bool scale[2] = {0};
 	
-	// determine which operator(s) to scale based on the current operator settings
-	if (!useFourOp(voice.patch))
-	{
-		// 2op FM (0): scale op 2 only
-		// 2op AM (1): scale op 1 and 2
-		scale[0] = (patchVoice->conn & 1);
-		scale[1] = true;
-	}
-	else if (voice.fourOpPrimary)
-	{
-		// 4op FM+FM (0, 0): don't scale op 1 or 2
-		// 4op AM+FM (1, 0): scale op 1 only
-		// 4op FM+AM (0, 1): scale op 2 only
-		// 4op AM+AM (1, 1): scale op 1 only
-		scale[0] = (voice.patch->voice[0].conn & 1);
-		scale[1] = (voice.patch->voice[1].conn & 1) && !scale[0];
-	}
-	else
-	{
-		// 4op FM+FM (0, 0): scale op 4 only
-		// 4op AM+FM (1, 0): scale op 4 only
-		// 4op FM+AM (0, 1): scale op 4 only
-		// 4op AM+AM (1, 1): scale op 3 and 4
-		scale[0] = (voice.patch->voice[0].conn & 1)
-		        && (voice.patch->voice[1].conn & 1);
-		scale[1] = true;
-	}
+	const auto patchVoice = voice.patchVoice;
+	const auto scale = activeCarriers(voice);
 	
 	// 0x40: key scale / volume
-	if (scale[0])
+	if (scale.first)
 		level = std::min(0x3f, patchVoice->op_level[0] + atten);
 	else
 		level = patchVoice->op_level[0];
 	write(voice.chip, REG_OP_LEVEL + voice.op,     level | patchVoice->op_ksr[0]);
 	
-	if (scale[1])
+	if (scale.second)
 		level = std::min(0x3f, patchVoice->op_level[1] + atten);
 	else
 		level = patchVoice->op_level[1];
@@ -833,19 +852,17 @@ void OPLPlayer::updateFrequency(OPLVoice& voice)
 // ----------------------------------------------------------------------------
 void OPLPlayer::silenceVoice(OPLVoice& voice)
 {
-	voice.channel    = nullptr;
-	voice.patch      = nullptr;
-	voice.patchVoice = nullptr;
-	
 	voice.on = false;
 	voice.justChanged = true;
 	voice.duration = UINT_MAX;
 	
-	write(voice.chip, REG_OP_LEVEL + voice.op,     0xff);
-	write(voice.chip, REG_OP_LEVEL + voice.op + 3, 0xff);
-	write(voice.chip, REG_VOICE_FREQL + voice.num, 0x00);
-	write(voice.chip, REG_VOICE_FREQH + voice.num, 0x00);
-	write(voice.chip, REG_VOICE_CNT + voice.num,   0x00);
+	const auto scale = activeCarriers(voice);
+
+	if (scale.first)
+		write(voice.chip, REG_OP_SR + voice.op,     0xff);
+	if (scale.second)
+		write(voice.chip, REG_OP_SR + voice.op + 3, 0xff);
+	write(voice.chip, REG_VOICE_FREQH + voice.num, voice.freq >> 8);
 }
 
 // ----------------------------------------------------------------------------
@@ -913,12 +930,6 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 		else
 			voice = findVoice(channel, newPatch, note);
 		if (!voice) continue; // ??
-		
-		if (voice->on)
-		{
-			silenceVoice(*voice);
-			runOneSample(voice->chip);
-		}
 		
 		// update the note parameters for this voice
 		voice->channel = &m_channels[channel & 15];
