@@ -496,13 +496,16 @@ void OPLPlayer::reset()
 }
 
 // ----------------------------------------------------------------------------
-void OPLPlayer::runOneSample(int chip)
+void OPLPlayer::runSamples(int chip, unsigned count)
 {
-	// clock one sample after changing the 4op state before writing other registers
-	// so that ymfm can reassign operators to channels, etc
-	ymfm::ymf262::output_data output;
-	m_opl3[chip]->generate(&output);
-	m_sampleFIFO[chip].push(output);
+	// add some delay between register writes where needed
+	// (i.e. when forcing a voice off, changing 4op flags, etc.)
+	while (count--)
+	{
+		ymfm::ymf262::output_data output;
+		m_opl3[chip]->generate(&output);
+		m_sampleFIFO[chip].push(output);
+	}
 }
 
 // ----------------------------------------------------------------------------
@@ -729,8 +732,14 @@ void OPLPlayer::updatePatch(OPLVoice& voice, const OPLPatch *newPatch, uint8_t n
 			}
 			
 			write(voice.chip, REG_4OP, enable);
-			runOneSample(voice.chip);
+		//	runSamples(voice.chip, 1);
 		}
+
+		// kill an existing voice, then send the chip far enough forward in time to let the envelope die off
+		// (ROTT: fixes nasty reverse cymbal noises in spray.mid
+		//        without disrupting note timing too much for the staccato drums in fanfare2.mid)
+		silenceVoice(voice);
+		runSamples(voice.chip, 48);
 		
 		// 0x20: vibrato, sustain, multiplier
 		write(voice.chip, REG_OP_MODE + voice.op,     patchVoice.op_mode[0]);
@@ -752,7 +761,7 @@ void OPLPlayer::updatePatch(OPLVoice& voice, const OPLPatch *newPatch, uint8_t n
 	}
 
 	// 0x80: sustain/release
-	// update even for the same patch in case silenceVoice was called on this voice
+	// update even for the same patch in case silenceVoice was called from somewhere else on this voice
 	write(voice.chip, REG_OP_SR + voice.op,     patchVoice.op_sr[0]);
 	write(voice.chip, REG_OP_SR + voice.op + 3, patchVoice.op_sr[1]);
 }
@@ -855,13 +864,9 @@ void OPLPlayer::silenceVoice(OPLVoice& voice)
 	voice.on = false;
 	voice.justChanged = true;
 	voice.duration = UINT_MAX;
-	
-	const auto scale = activeCarriers(voice);
 
-	if (scale.first)
-		write(voice.chip, REG_OP_SR + voice.op,     0xff);
-	if (scale.second)
-		write(voice.chip, REG_OP_SR + voice.op + 3, 0xff);
+	write(voice.chip, REG_OP_SR + voice.op,     0xff);
+	write(voice.chip, REG_OP_SR + voice.op + 3, 0xff);
 	write(voice.chip, REG_VOICE_FREQH + voice.num, voice.freq >> 8);
 }
 
@@ -912,9 +917,8 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 	if (findVoice(channel, note, true))
 		return;
 	
-	midiNoteOff(channel, note);
 	if (!velocity)
-		return;
+		return midiNoteOff(channel, note);
 	
 //	printf("midiNoteOn: chn %u, note %u\n", channel, note);
 	const OPLPatch *newPatch = findPatch(channel, note);
@@ -931,6 +935,8 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 			voice = findVoice(channel, newPatch, note);
 		if (!voice) continue; // ??
 		
+		updatePatch(*voice, newPatch, i);
+
 		// update the note parameters for this voice
 		voice->channel = &m_channels[channel & 15];
 		voice->on = voice->justChanged = true;
@@ -939,7 +945,6 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 		// for dual 2op, set the second voice's duration to 1 so it can get dropped if we need it to
 		voice->duration = newPatch->dualTwoOp ? i : 0;
 		
-		updatePatch(*voice, newPatch, i);
 		updateVolume(*voice);
 		updatePanning(*voice);
 		
@@ -947,12 +952,10 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 		if (!useFourOp(newPatch))
 		{
 			updateFrequency(*voice);
-			runOneSample(voice->chip);
 		}
 		else if (i > 0)
 		{
 			updateFrequency(*voice->fourOpOther);
-			runOneSample(voice->chip);
 		}
 	}
 }
@@ -970,7 +973,6 @@ void OPLPlayer::midiNoteOff(uint8_t channel, uint8_t note)
 		voice->on = false;
 
 		write(voice->chip, REG_VOICE_FREQH + voice->num, voice->freq >> 8);
-		runOneSample(voice->chip);
 	}
 }
 

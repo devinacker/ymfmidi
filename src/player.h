@@ -151,7 +151,7 @@ private:
 
 	void updateMIDI();
 
-	void runOneSample(int chip);
+	void runSamples(int chip, unsigned count);
 
 	void write(int chip, uint16_t addr, uint8_t data);
 	
