@@ -23,12 +23,14 @@ OPLPlayer::OPLPlayer(int numChips, ChipType type)
 	{
 		m_numChips = numChips;
 		m_voices.resize(numChips * 18);
+		m_stereo = true;
 	}
 	else
 	{
 		// simulate two OPL2 on one OPL3, etc
 		m_numChips = (numChips + 1) / 2;
 		m_voices.resize(numChips * 9);
+		m_stereo = false;
 	}
 	
 	m_opl3.resize(m_numChips);
@@ -89,6 +91,16 @@ void OPLPlayer::setFilter(double cutoff)
 		m_hpFilterCoef = 1.0 / ((2 * pi * cutoff) / m_sampleRate + 1);
 	}
 //	printf("sample rate = %u / cutoff %f Hz / filter coef %f\n", m_sampleRate, cutoff, m_hpFilterCoef);
+}
+
+// ----------------------------------------------------------------------------
+void OPLPlayer::setStereo(bool on)
+{
+	if (m_chipType == ChipOPL3)
+	{
+		m_stereo = on;
+		updateChannelVoices(-1, &OPLPlayer::updatePanning);
+	}
 }
 
 // ----------------------------------------------------------------------------
@@ -685,11 +697,11 @@ std::pair<bool, bool> OPLPlayer::activeCarriers(const OPLVoice& voice) const
 }
 
 // ----------------------------------------------------------------------------
-void OPLPlayer::updateChannelVoices(uint8_t channel, void(OPLPlayer::*func)(OPLVoice&))
+void OPLPlayer::updateChannelVoices(int8_t channel, void(OPLPlayer::*func)(OPLVoice&))
 {
 	for (auto& voice : m_voices)
 	{
-		if (voice.channel == &m_channels[channel & 15])
+		if ((channel < 0) || (voice.channel == &m_channels[channel & 15]))
 			(this->*func)(voice);
 	}
 }
@@ -807,7 +819,7 @@ void OPLPlayer::updatePanning(OPLVoice& voice)
 	
 	// 0xc0: output/feedback/mode
 	uint8_t pan = 0x30;
-	if (m_chipType == ChipOPL3)
+	if (m_stereo)
 	{
 		if (voice.channel->pan < 32)
 			pan = 0x10;
@@ -1028,7 +1040,8 @@ void OPLPlayer::midiControlChange(uint8_t channel, uint8_t control, uint8_t valu
 	
 	case 10:
 		ch.pan = value;
-		updateChannelVoices(channel, &OPLPlayer::updatePanning);
+		if (m_stereo)
+			updateChannelVoices(channel, &OPLPlayer::updatePanning);
 		break;
 	
 	case 32:

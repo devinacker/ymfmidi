@@ -39,6 +39,7 @@ void usage()
 	"\n"
 	"  -c / --chip <num>       set type of chip (1 = OPL, 2 = OPL2, 3 = OPL3; default 3)\n"
 	"  -n / --num <num>        set number of chips (default 1)\n"
+	"  -m / --mono             ignore MIDI panning information (OPL3 only)\n"
 	"  -b / --buf <num>        set buffer size (default 4096)\n"
 	"  -g / --gain <num>       set gain amount (default 1.0)\n"
 	"  -r / --rate <num>       set sample rate (default 44100)\n"
@@ -57,6 +58,7 @@ static const option options[] =
 	{"song",      1, nullptr, 's'}, 
 	{"chip",      1, nullptr, 'c'},
 	{"num",       1, nullptr, 'n'},
+	{"mono",      0, nullptr, 'm'},
 	{"buf",       1, nullptr, 'b'},
 	{"gain",      1, nullptr, 'g'},
 	{"rate",      1, nullptr, 'r'},
@@ -98,11 +100,12 @@ int main(int argc, char **argv)
 	OPLPlayer::ChipType chipType = OPLPlayer::ChipOPL3;
 	int numChips = 1;
 	unsigned songNum = 0;
+	bool stereo = true;
 
 	printf("ymfmidi v" VERSION " - " __DATE__ "\n");
 
 	char opt;
-	while ((opt = getopt_long(argc, argv, ":hq1s:o:c:n:b:g:r:f:", options, nullptr)) != -1)
+	while ((opt = getopt_long(argc, argv, ":hq1s:o:c:n:mb:g:r:f:", options, nullptr)) != -1)
 	{
 		switch (opt)
 		{
@@ -147,6 +150,10 @@ int main(int argc, char **argv)
 				fprintf(stderr, "number of chips must be at least 1\n");
 				exit(1);
 			}
+			break;
+		
+		case 'm':
+			stereo = false;
 			break;
 		
 		case 'b':
@@ -212,6 +219,7 @@ int main(int argc, char **argv)
 	player->setSampleRate(sampleRate);
 	player->setGain(gain);
 	player->setFilter(filter);
+	player->setStereo(stereo);
 	if (songNum > 0)
 		player->setSongNum(songNum - 1);
 	
@@ -370,7 +378,7 @@ static void mainLoopWAV(OPLPlayer *player, const char *path)
 	uint32_t numSamples = 0;
 	uint16_t samples[2];
 	char outSamples[4];
-	const unsigned bytesPerSample = ((player->chipType() == OPLPlayer::ChipOPL3) ? 4 : 2);
+	const unsigned bytesPerSample = player->stereo() ? 4 : 2;
 	
 	while (!player->atEnd())
 	{

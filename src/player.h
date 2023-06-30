@@ -77,6 +77,10 @@ public:
 	void setGain(double gain);
 	void setFilter(double cutoff);
 	
+	// enable/disable OPL3 stereo support. can be called during active playback
+	// (note: the output of OPLPlayer::generate is a stereo stream regardless of this setting)
+	void setStereo(bool on = true);
+	
 	// load MIDI data from the specified path
 	bool loadSequence(const char* path);
 	// load MIDI data from an already opened file, optionally at a given offset
@@ -94,6 +98,8 @@ public:
 	// load instrument patches from a block of memory
 	bool loadPatches(const uint8_t *data, size_t size);
 	
+	// render the audio output during playback.
+	// note: regardless of sound settings, output stream is always stereo (two floats or int16s per sample)
 	void generate(float *data, unsigned numSamples);
 	void generate(int16_t *data, unsigned numSamples);
 	
@@ -128,6 +134,7 @@ public:
 	// misc. informational stuff
 	uint32_t sampleRate() const { return m_sampleRate; }
 	ChipType chipType() const { return m_chipType; }
+	bool stereo() const { return m_stereo; }
 	const std::string& patchName(uint8_t num) { return m_patches[num].name; }
 	
 private:
@@ -171,7 +178,8 @@ private:
 	std::pair<bool, bool> activeCarriers(const OPLVoice& voice) const;
 
 	// update a property of all currently playing voices on a MIDI channel
-	void updateChannelVoices(uint8_t channel, void(OPLPlayer::*func)(OPLVoice&));
+	// (or all channels if `channel` < 0)
+	void updateChannelVoices(int8_t channel, void(OPLPlayer::*func)(OPLVoice&));
 
 	// update the patch parameters for a voice
 	void updatePatch(OPLVoice& voice, const OPLPatch *newPatch, uint8_t numVoice = 0);
@@ -192,6 +200,7 @@ private:
 	unsigned m_numChips;
 	ChipType m_chipType;
 	
+	bool m_stereo;
 	uint32_t m_sampleRate; // output sample rate (default 44.1k)
 	double m_sampleGain;
 	double m_sampleStep; // ratio of OPL sample rate to output sample rate (usually < 1.0)
