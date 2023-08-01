@@ -570,15 +570,13 @@ OPLVoice* OPLPlayer::findVoice(uint8_t channel, const OPLPatch *patch, uint8_t n
 	
 	if (found) return found;
 	// if we didn't find one yet, just try to find an old one
-	// using the same channel and/or patch, even if it should still be playing.
-	
+	// using the same patch, even if it should still be playing.
 	for (auto& voice : m_voices)
 	{
 		if (useFourOp(patch) && !voice.fourOpPrimary)
 			continue;
 		
-		if ((voice.channel->num == channel || voice.patch == patch)
-		    && voice.duration > duration)
+		if (voice.patch == patch && voice.duration > duration)
 		{
 			found = &voice;
 			duration = voice.duration;
@@ -954,8 +952,7 @@ void OPLPlayer::midiNoteOn(uint8_t channel, uint8_t note, uint8_t velocity)
 		voice->on = voice->justChanged = true;
 		voice->note = note;
 		voice->velocity = ymfm::clamp((int)velocity + newPatch->velocity, 0, 127);
-		// for dual 2op, set the second voice's duration to 1 so it can get dropped if we need it to
-		voice->duration = newPatch->dualTwoOp ? i : 0;
+		voice->duration = 0;
 		
 		updateVolume(*voice);
 		updatePanning(*voice);

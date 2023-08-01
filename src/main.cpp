@@ -54,8 +54,8 @@ static const option options[] =
 {
 	{"help",      0, nullptr, 'h'},
 	{"quiet",     0, nullptr, 'q'},
-	{"play-once", 0, nullptr, '1'}, 
-	{"song",      1, nullptr, 's'}, 
+	{"play-once", 0, nullptr, '1'},
+	{"song",      1, nullptr, 's'},
 	{"chip",      1, nullptr, 'c'},
 	{"num",       1, nullptr, 'n'},
 	{"mono",      0, nullptr, 'm'},
