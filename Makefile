@@ -18,7 +18,7 @@ CXXFLAGS	= $(CFLAGS) -std=c++14
 
 ASFLAGS	:=	$(ARCH)
 LDFLAGS	:=	`pkg-config --libs sdl2` \
-			-Wl,-rpath=. 
+			-Wl,-rpath . 
 
 ifeq ($(DEBUG),1)
   CFLAGS  += -O0 -g
